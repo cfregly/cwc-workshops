@@ -13,7 +13,8 @@ from anthropic.lib import files_from_dir
 
 from provided import DATA, SYSTEM, TOOLS, metrics, deploys, diff
 
-client = anthropic.Anthropic()
+# After an ambiguous write error, inspect the existing resources before retrying.
+client = anthropic.Anthropic(max_retries=0)
 
 
 # ── 1. Agent ──────────────────────────────────────────────────────────────

@@ -7,7 +7,10 @@ edit this file — agent.py imports from it.
 """
 import json
 from pathlib import Path
+import re
+from threading import Lock
 
+import anthropic
 import streamlit as st
 
 DATA = Path("data")
@@ -92,29 +95,98 @@ def _text(content) -> str:
     return "".join(getattr(b, "text", "") for b in content if getattr(b, "type", None) == "text")
 
 
+def _api_error(error):
+    if isinstance(error, anthropic.APIConnectionError):
+        return "Could not reach the Claude API. Check your connection and inspect any existing resources before retrying."
+    message = f"Claude API returned HTTP {error.status_code}."
+    if (request_id := error.request_id) and re.fullmatch(r"req_[A-Za-z0-9_-]+", request_id):
+        message += f" Request ID: {request_id}."
+    if error.status_code == 400 and "credit balance is too low" in str(error.body).lower():
+        return message + " The workshop workspace needs API credits. Ask the instructor to check the workspace."
+    return message + " See Troubleshooting in the README before retrying."
+
+
+@st.cache_resource
+def _setup_guard():
+    return Lock(), {}
+
+
+def _setup_resource(name, operation):
+    lock, errors = _setup_guard()
+    with lock:
+        if message := errors.get(name):
+            if not st.button("Retry after checking existing resources", key=f"retry-{name}"):
+                st.error(message)
+                return None
+            del errors[name]
+        try:
+            resource_id = operation()
+            if isinstance(resource_id, str) and resource_id:
+                return resource_id
+            st.error(f"{name}() must return the resource ID. Check the reference and any existing resource before retrying.")
+        except NotImplementedError:
+            _offline(name)
+        except (anthropic.APIStatusError, anthropic.APIConnectionError) as error:
+            recovery = (" A Skill may already have uploaded." if name == "setup_agent" else "")
+            message = f"{name}(): {_api_error(error)}{recovery} Check existing resources before retrying."
+            errors[name] = message
+            st.error(message)
+            st.rerun()
+    return None
+
+
+def _pending_actions(client, sid, pending):
+    if not pending:
+        return pending
+    results = client.beta.sessions.events.list(
+        sid, types=["user.custom_tool_result", "user.tool_confirmation"], order="desc", limit=15,
+    )
+    for item in results:
+        pending.discard(getattr(item, "custom_tool_use_id", None) or getattr(item, "tool_use_id", None))
+        if not pending:
+            break
+    return pending
+
+
+def _paused_reason(client, sid):
+    page = client.beta.sessions.events.list(sid, types=["session.status_idle"], order="desc", limit=1)
+    if not page.data:
+        return None
+    reason = page.data[0].stop_reason
+    if reason.type == "requires_action" and _pending_actions(client, sid, set(reason.event_ids)):
+        return "requires_action"
+    if reason.type == "budget_reached":
+        return "budget_reached"
+    return None
+
+
 def chat_panel():
+    try:
+        _chat_panel()
+    except (anthropic.APIStatusError, anthropic.APIConnectionError) as error:
+        st.error(_api_error(error))
+
+
+def _chat_panel():
     import agent  # lazy import to avoid circular dependency
 
     st.markdown("##### SRE AGENT")
 
-    try:
-        agent_id = agent.setup_agent()
-    except NotImplementedError:
-        return _offline("setup_agent")
+    agent_id = _setup_resource("setup_agent", agent.setup_agent)
+    if agent_id is None:
+        return
     st.caption(f"agent · `{agent_id}`")
     for sk in _agent_skills(agent_id):
         st.caption(f"skill · `{sk}`")
 
-    try:
-        env_id = agent.setup_environment()
-    except NotImplementedError:
-        return _offline("setup_environment")
+    env_id = _setup_resource("setup_environment", agent.setup_environment)
+    if env_id is None:
+        return
     st.caption(f"env · `{env_id}`")
 
-    try:
-        log_id = agent.upload_log()
-    except NotImplementedError:
-        return _offline("upload_log")
+    log_id = _setup_resource("upload_log", agent.upload_log)
+    if log_id is None:
+        return
     st.caption(f"log file · `{log_id}`")
 
     # ── session picker: sessions are stateful + persisted server-side.
@@ -123,8 +195,22 @@ def chat_panel():
         listed = _list_sessions(agent_id)
         if listed:
             st.session_state.sid = listed[0][0]
-            st.session_state.hist = _load_history(st.session_state.sid)
     sid = st.session_state.get("sid")
+    status = None
+    paused = None
+    if sid:
+        try:
+            status = agent.client.beta.sessions.retrieve(sid).status
+            if "hist" not in st.session_state:
+                st.session_state.hist = _load_history(sid)
+            if status == "idle":
+                paused = _paused_reason(agent.client, sid)
+        except anthropic.NotFoundError:
+            _list_sessions.clear()
+            st.session_state.sid = None
+            st.session_state.hist = []
+            st.warning(f"Session {sid} is no longer visible. Check the ID and workspace before starting over.")
+            sid = None
 
     listed = _list_sessions(agent_id)
     labels = {s: l for s, l, _ in listed}
@@ -136,14 +222,16 @@ def chat_panel():
     def _on_pick():
         chosen = st.session_state.session_picker
         st.session_state.sid = chosen
-        st.session_state.hist = _load_history(chosen)
+        st.session_state.pop("hist", None)
 
     if sid:
         st.session_state.session_picker = sid
+    else:
+        st.session_state.pop("session_picker", None)
 
     pick_col, new_col, del_col = st.columns([6, 1, 1])
     pick_col.selectbox(
-        "session", ids, format_func=lambda v: labels.get(v, v), disabled=not ids,
+        "session", ids, index=None if sid is None else 0, format_func=lambda v: labels.get(v, v), disabled=not ids,
         label_visibility="collapsed", key="session_picker", on_change=_on_pick,
     )
     if new_col.button("", icon=":material/add:", help="new session", use_container_width=True):
@@ -156,7 +244,7 @@ def chat_panel():
             _list_sessions.clear()
             st.rerun()
     if del_col.button("", icon=":material/delete:", help="delete session",
-                      use_container_width=True, disabled=not sid):
+                      use_container_width=True, disabled=paused is not None or status not in ("idle", "terminated")):
         try:
             agent.delete_session(st.session_state.sid)
         except NotImplementedError:
@@ -164,10 +252,12 @@ def chat_panel():
         else:
             _list_sessions.clear()
             del st.session_state["sid"]
+            st.session_state.pop("hist", None)
             st.rerun()
 
     if not sid:
-        st.caption("no sessions — click **+** to start one")
+        st.caption("Select an existing session or click **+** to start one." if ids
+                   else "no sessions — click **+** to start one")
         st.chat_input("ask…", disabled=True, key="off_nosession")
         return
 
@@ -179,7 +269,11 @@ def chat_panel():
             with st.chat_message(role):
                 st.markdown(text)
 
-    if q := st.chat_input("ask the agent…"):
+    if status in ("running", "rescheduling"):
+        st.info(f"Session {sid} is {status}. Reopen it after the current work finishes.")
+    if paused:
+        st.warning(f"Session {sid} is paused ({paused}). Inspect it in Console before sending again.")
+    if q := st.chat_input("ask the agent…", disabled=status != "idle" or paused is not None):
         st.session_state.hist.append(("user", q))
         with chat:
             with st.chat_message("user"):
@@ -187,11 +281,14 @@ def chat_panel():
             with st.chat_message("assistant"):
                 text_ph = st.empty()
                 buf = ""
+                turn_text = []
+                local_calls = set()
+                answered = set()
                 tool_boxes: dict[str, object] = {}
                 try:
                     for ev in agent.stream_reply(st.session_state.sid, q):
                         if ev.type == "agent.message":
-                            buf += "".join(b.text for b in ev.content)
+                            buf += _text(ev.content)
                             text_ph.markdown(buf)
                         elif ev.type in ("agent.tool_use", "agent.custom_tool_use"):
                             scope = "sandbox" if ev.type == "agent.tool_use" else "local"
@@ -200,6 +297,8 @@ def chat_panel():
                             box.caption("args")
                             box.code(args if args != "{}" else "(none)", language="json")
                             tool_boxes[ev.id] = box
+                            if scope == "local":
+                                local_calls.add(ev.id)
                         elif ev.type == "agent.tool_result":
                             box = tool_boxes.pop(ev.tool_use_id, None)
                             if box:
@@ -207,18 +306,51 @@ def chat_panel():
                                 box.code(_text(ev.content)[:1500] or "(empty)", language="text")
                                 box.update(state="complete")
                         elif ev.type == "user.custom_tool_result":
+                            answered.add(ev.custom_tool_use_id)
                             box = tool_boxes.pop(ev.custom_tool_use_id, None)
                             if box:
                                 box.caption("result")
                                 box.code(_text(ev.content)[:1500] or "(empty)", language="text")
                                 box.update(state="complete")
                         elif ev.type == "span.model_request_start":
-                            text_ph = st.empty(); buf = ""
-                        elif ev.type == "session.status_idle" and ev.stop_reason.type == "end_turn":
-                            for b in tool_boxes.values():
-                                b.update(state="complete")
+                            if buf:
+                                turn_text.append(buf)
+                            text_ph = st.empty()
+                            buf = ""
+                        elif ev.type == "session.status_idle":
+                            reason = ev.stop_reason
+                            reason_type = getattr(reason, "type", "unknown reason")
+                            if reason_type == "end_turn":
+                                break
+                            if reason_type == "requires_action":
+                                pending = set(reason.event_ids) - answered
+                                if pending and pending <= local_calls:
+                                    # The worker posts results before it yields the request. Confirm them
+                                    # if the pause arrived ahead of their events on this stream.
+                                    pending = _pending_actions(agent.client, sid, pending)
+                                if reason.event_ids and not pending:
+                                    continue
+                            st.warning(f"Session {sid} paused ({reason_type}). Inspect this session before sending again.")
                             break
+                        elif ev.type == "session.error":
+                            retrying = getattr(getattr(ev.error, "retry_status", None), "type", None) == "retrying"
+                            if retrying:
+                                st.info("Claude is retrying this session. Keep the dashboard open.")
+                                continue
+                            st.error(f"Session {sid} reported an error. Inspect its event history before sending again.")
+                            break
+                        elif ev.type == "session.status_terminated":
+                            st.error(f"Session {sid} terminated. Inspect its event history before starting over.")
+                            break
+                    else:
+                        st.warning(f"The event stream closed before the turn ended. Check session {sid} before sending again.")
                 except NotImplementedError:
                     st.warning("implement `stream_reply()` / `handle_tool()` in `agent.py`")
-                    return
-        st.session_state.hist.append(("assistant", buf))
+                except (KeyError, TypeError, ValueError):
+                    st.error(f"The tool handler or event stream returned unexpected data. Check session {sid} and agent.py.")
+                finally:
+                    for box in tool_boxes.values():
+                        box.caption("Result unavailable in this stream.")
+                        box.update(state="error")
+        if response := "\n\n".join([*turn_text, buf]).strip():
+            st.session_state.hist.append(("assistant", response))
