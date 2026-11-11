@@ -24,26 +24,103 @@ html, body, [class*="st-"], .stApp {
   font-family: 'Material Symbols Rounded' !important;
 }
 
+.tool-call-heading, .tool-call-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.5rem;
+}
+.tool-call-heading { justify-content: space-between; }
+.tool-call-name { min-width: 0; }
+.tool-call-name code {
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+.tool-call-name > span, .tool-call-state {
+  color: #a0adbd;
+  font-size: 0.8125rem;
+}
+.tool-call-state.green { color: var(--ok); }
+.tool-call-state.red { color: var(--critical); }
+.tool-call-state.orange { color: var(--warn); }
+
+/* Give the native copy controls their own grid space, outside the code. */
+[class*="st-key-tool-card-"] [data-testid="stCode"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.25rem;
+}
+[class*="st-key-tool-card-"] [data-testid="stCode"] pre {
+  grid-row: 2;
+  min-width: 0;
+}
+[class*="st-key-tool-card-"] [data-testid="stCode"] code {
+  overflow-wrap: anywhere;
+}
+[class*="st-key-tool-card-"] [data-testid="stCode"] > div {
+  position: static;
+  grid-row: 1;
+  justify-self: end;
+}
+[class*="st-key-tool-card-"] [data-testid="stCode"] > div,
+[class*="st-key-tool-card-"] [data-testid="stElementToolbarButton"] {
+  opacity: 1;
+  visibility: visible;
+}
+[class*="st-key-tool-card-"] [data-testid="stElementToolbarButton"] button {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  width: auto;
+  padding-inline: 0.6rem;
+}
+[class*="st-key-tool-card-"] [data-testid="stElementToolbarButton"] button::after {
+  content: "Copy Contents";
+  font-size: 0.75rem;
+}
+[class*="st-key-tool-card-"] [class*="st-key-tool-event-id-"] [data-testid="stCode"] {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+[class*="st-key-tool-event-id-"] [data-testid="stCode"] pre {
+  grid-row: 1;
+  grid-column: 1;
+  min-height: 2.2rem;
+  padding: 0.4rem 0.6rem;
+}
+[class*="st-key-tool-event-id-"] [data-testid="stCode"] > div { grid-column: 2; }
+[class*="st-key-tool-event-id-"] [data-testid="stCode"] code { color: #8edcf5; }
+[class*="st-key-tool-event-id-"] [data-testid="stElementToolbarButton"] button::after { content: "Copy ID"; }
+[class*="st-key-tool-card-"] [data-testid="stElementToolbarButton"] button[aria-label="Copied"]::after { content: "Copied"; }
+
+.tool-console-link {
+  display: inline-flex;
+  width: 2.25rem;
+  height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  color: var(--text) !important;
+  font-size: 1.125rem;
+  line-height: 1;
+  text-decoration: none !important;
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+}
+.tool-console-link:hover { background: var(--surface-2); }
+.tool-console-link:focus-visible { outline: 2px solid var(--accent); }
+
+@media (max-width: 540px) {
+  [class*="st-key-tool-card-"] [class*="st-key-tool-event-id-"] [data-testid="stCode"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  [class*="st-key-tool-event-id-"] [data-testid="stCode"] pre { grid-row: 2; }
+  [class*="st-key-tool-event-id-"] [data-testid="stCode"] > div { grid-column: 1; }
+}
+
 h1, h2, h3, .stTitle, [data-testid="stHeader"] {
   font-family: 'Chakra Petch', sans-serif !important;
   letter-spacing: 0.02em;
   text-transform: uppercase;
-}
-
-/* subtle scanline grain */
-.stApp::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background: repeating-linear-gradient(
-    0deg,
-    rgba(255,255,255,0.012) 0px,
-    rgba(255,255,255,0.012) 1px,
-    transparent 1px,
-    transparent 3px
-  );
-  z-index: 1;
 }
 
 /* alert banner */
@@ -143,13 +220,7 @@ h1, h2, h3, .stTitle, [data-testid="stHeader"] {
   border: 1px solid var(--border);
 }
 
-/* status (tool) boxes */
-[data-testid="stStatus"] {
-  border: 1px solid var(--border);
-  font-size: 12px;
-}
-
-/* side chat panel */
+/* Investigation input */
 [data-testid="stChatInput"] {
   background: var(--surface);
   border: 1px solid var(--border);

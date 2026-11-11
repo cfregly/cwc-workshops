@@ -8,15 +8,9 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from ui import alert_banner, PLOTLY_LAYOUT
-from provided import chat_panel
 
-main, side = st.columns([5, 3], gap="large")
-with side:
-    chat_panel()
-
-with main:
-    st.title("METRICS")
-    alert_banner()
+st.title("METRICS")
+alert_banner()
 
 DATA = Path(__file__).parent.parent / "data"
 metrics = json.loads((DATA / "metrics.json").read_text())
@@ -55,7 +49,6 @@ def chart(metric_name: str, title: str, yfmt: str | None = None):
     st.plotly_chart(fig, use_container_width=True)
 
 
-with main:
-    chart("p99_latency_ms", "P99 LATENCY (ms)")
-    chart("error_rate", "ERROR RATE", ".1%")
-    chart("db_pool_utilization", "DB POOL UTILIZATION", ".0%")
+chart("p99_latency_ms", "P99 LATENCY (ms)")
+chart("error_rate", "ERROR RATE", ".1%")
+chart("db_pool_utilization", "DB POOL UTILIZATION", ".0%")

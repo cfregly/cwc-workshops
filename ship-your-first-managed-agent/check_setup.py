@@ -26,7 +26,7 @@ PACKAGES = {
 FIRST_PARTY_URL = "https://api.anthropic.com"
 API_OVERRIDES = ("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_CUSTOM_HEADERS")
 WORKSHOP_FILES = (
-    "agent.py", "agent_complete.py", "app.py", "provided.py", "ui.py",
+    "requirements.lock.txt", "agent.py", "agent_complete.py", "app.py", "provided.py", "ui.py",
     "pages/1_Metrics.py", "pages/2_Logs.py", "pages/3_Deploys.py",
     "assets/style.css", "data/generate_log.py", "data/metrics.json",
     "data/deploys.json", "data/diff.txt", "incident-triage-runbook/SKILL.md",
@@ -297,8 +297,19 @@ def main():
         failed |= not condition
         return condition
 
-    print(f"Python {sys.version.split()[0]} at {sys.executable}")
-    check(sys.version_info >= (3, 10), "Workshop requires Python 3.10 or newer.")
+    version = sys.version.split()[0]
+    print(f"Python {version} at {sys.executable}")
+    try:
+        pinned_version = (root / ".python-version").read_text(encoding="ascii").strip()
+    except (OSError, UnicodeError):
+        pinned_version = ""
+    if re.fullmatch(r"\d+\.\d+\.\d+", pinned_version) is None:
+        print("FIX   Restore .python-version from the workshop checkout.")
+        return 1
+    if not check(version == pinned_version,
+                 f"Python {version} matches the workshop pin." if version == pinned_version
+                 else f"Expected Python {pinned_version}. Recreate .venv using the README."):
+        return 1
     check(Path.cwd().resolve() == root, "Run from the workshop folder that contains app.py.")
     check(Path(sys.prefix).resolve() == (root / ".venv").resolve(),
           "Use this workshop's .venv Python as shown in the README.")
@@ -309,11 +320,19 @@ def main():
     if failed:
         print("Use Troubleshooting in the README, then rerun this command.")
         return 1
+    pip = [sys.executable, "-I", "-m", "pip", "--disable-pip-version-check"]
+    pip_env = {name: value for name, value in os.environ.items() if not name.upper().startswith("PIP_")}
+    pip_env["PIP_CONFIG_FILE"] = os.devnull
+    if subprocess.call(pip + ["check"], env=pip_env):
+        print("FIX   Reinstall the locked requirements in this venv before continuing.")
+        return 1
+    if subprocess.call(pip + ["install", "--dry-run", "--no-index", "--require-hashes", "--quiet",
+                              "-r", "requirements.lock.txt"], env=pip_env):
+        print("FIX   Installed packages do not match requirements.lock.txt. Reinstall using the README.")
+        return 1
+    print("OK    Installed packages match the dependency lock.")
     if args.check_access or args.launch:
         if key is None:
-            return 1
-        if subprocess.call([sys.executable, "-I", "-m", "pip", "check"]):
-            print("FIX   Reinstall the pinned requirements in this venv before continuing.")
             return 1
         if args.check_access and not check_access(key):
             return 1

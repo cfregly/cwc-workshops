@@ -6,12 +6,23 @@ schemas, the local data those tools read, and the side-chat UI. You don't
 edit this file — agent.py imports from it.
 """
 import json
+from collections import defaultdict
+from dataclasses import dataclass
+from html import escape
 from pathlib import Path
 import re
 from threading import Lock
+from urllib.parse import quote
 
 import anthropic
 import streamlit as st
+from anthropic.types.beta.sessions import (
+    BetaManagedAgentsAgentCustomToolUseEvent,
+    BetaManagedAgentsAgentToolResultEvent,
+    BetaManagedAgentsAgentToolUseEvent,
+    BetaManagedAgentsUserCustomToolResultEvent,
+)
+from streamlit.delta_generator import DeltaGenerator
 
 DATA = Path("data")
 
@@ -42,7 +53,115 @@ deploys = (DATA / "deploys.json").read_text()
 diff = (DATA / "diff.txt").read_text()
 
 
-# ── side-chat UI ──────────────────────────────────────────────────────────
+# ── Investigation UI ─────────────────────────────────────────────────────
+_ToolRequest = BetaManagedAgentsAgentCustomToolUseEvent | BetaManagedAgentsAgentToolUseEvent
+_ToolResult = BetaManagedAgentsAgentToolResultEvent | BetaManagedAgentsUserCustomToolResultEvent
+_ToolKey = tuple[str, str]
+
+
+@dataclass
+class _ToolCall:
+    request: _ToolRequest
+    results: dict[str, _ToolResult]
+
+
+_ChatPart = str | _ToolCall
+_ChatHistory = list[tuple[str, list[_ChatPart]]]
+
+
+def _tool_key(event: _ToolRequest | _ToolResult) -> _ToolKey:
+    if event.type == "user.custom_tool_result":
+        return "agent.custom_tool_use", event.custom_tool_use_id
+    if event.type == "agent.tool_result":
+        return "agent.tool_use", event.tool_use_id
+    return event.type, event.id
+
+
+def _console_session_url(session_id: str, workspace: str | None) -> str:
+    workspace_path = quote(workspace or "default", safe="")
+    session_path = quote(session_id, safe="")
+    return f"https://platform.claude.com/workspaces/{workspace_path}/sessions/{session_path}"
+
+
+def _event_id(label: str, event_id: str, *, console_url: str | None = None):
+    with st.container(key=f"tool-event-id-{event_id}", gap=None):
+        st.caption(label)
+        with st.container(horizontal=True, wrap=False, gap="xsmall"):
+            st.code(event_id, language=None, wrap_lines=True)
+            if console_url:
+                st.html(
+                    f'<a class="tool-console-link" href="{escape(console_url, quote=True)}" '
+                    'target="_blank" rel="noopener noreferrer" '
+                    'aria-label="Open call in Claude Console" title="Open call in Claude Console">'
+                    '<span aria-hidden="true">↗</span>'
+                    '</a>',
+                    width="content",
+                )
+
+
+def _payload(value: object, *, text: bool = False):
+    language = "json"
+    if text and isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            language = "text"
+    body = json.dumps(value, indent=2, ensure_ascii=False) if language == "json" else str(value)
+    st.code(body, language=language, wrap_lines=True)
+
+
+def _render_tool_heading(heading: DeltaGenerator, call: _ToolCall, *, waiting: bool = False):
+    request = call.request
+    scope = "Local" if request.type == "agent.custom_tool_use" else "Sandbox"
+    if any(result.is_error for result in call.results.values()):
+        status, color = "Tool error", "red"
+    elif call.results:
+        status, color = "Result received", "green"
+    elif waiting:
+        status, color = "Waiting for result", "gray"
+    else:
+        status, color = "Result not observed", "orange"
+    heading.html(
+        '<div class="tool-call-heading">'
+        f'<div class="tool-call-name"><strong><code>{escape(request.name)}</code></strong><span>{scope}</span></div>'
+        f'<span class="tool-call-state {color}">{status}</span>'
+        '</div>'
+    )
+
+
+def _render_tool_result(result: _ToolResult):
+    st.markdown("**Result**")
+    _event_id("Result event ID", result.id)
+    if not result.content:
+        st.caption("Empty result")
+    for block in result.content or ():
+        if block.type == "text":
+            _payload(block.text, text=True)
+        else:
+            _payload(block.model_dump(mode="json", exclude_none=True))
+    reference = "custom_tool_use_id" if result.type == "user.custom_tool_result" else "tool_use_id"
+    st.caption(f"The result’s `{reference}` matches the call event ID.")
+
+
+def _render_tool_call(
+    call: _ToolCall, session_url: str, *, waiting: bool = False,
+) -> tuple[DeltaGenerator, DeltaGenerator]:
+    request = call.request
+    with st.container(border=True, key=f"tool-card-{request.id}", gap="xsmall"):
+        heading = st.empty()
+        _render_tool_heading(heading, call, waiting=waiting)
+        event_id = quote(request.id, safe="")
+        _event_id("Call event ID", request.id, console_url=f"{session_url}?event={event_id}")
+        with st.expander("Input and result", key=f"tool-details-{request.id}"):
+            st.markdown("**Input**")
+            _payload(request.input)
+            result_area = st.container(gap="xsmall")
+            with result_area:
+                for result in call.results.values():
+                    _render_tool_result(result)
+    return heading, result_area
+
+
 def _offline(fn: str):
     st.caption(f"agent offline — implement `{fn}()` in `agent.py`")
     st.chat_input("ask…", disabled=True, key=f"off_{fn}")
@@ -66,27 +185,36 @@ def _list_sessions(agent_id: str):
     ]
 
 
-def _load_history(session_id: str):
+def _load_history(session_id: str) -> _ChatHistory:
     """Replay a session's conversation from the server-side event log."""
     import agent
-    hist: list[tuple[str, str]] = []
-    for ev in agent.client.beta.sessions.events.list(session_id, order="asc", limit=500).data:
+
+    history: _ChatHistory = []
+    results: dict[_ToolKey, dict[str, _ToolResult]] = defaultdict(dict)
+    calls_seen: set[_ToolKey] = set()
+    # Iterating the SDK cursor follows later pages, including results for earlier calls.
+    for ev in agent.client.beta.sessions.events.list(session_id, order="asc", limit=500):
         if ev.type == "user.message":
-            hist.append(("user", _text(ev.content)))
-        elif ev.type == "agent.message":
-            txt = _text(ev.content)
-            if hist and hist[-1][0] == "assistant":
-                hist[-1] = ("assistant", hist[-1][1] + txt)
+            history.append(("user", [_text(ev.content)]))
+            continue
+        if ev.type in ("agent.tool_result", "user.custom_tool_result"):
+            results[_tool_key(ev)][ev.id] = ev
+            continue
+        if ev.type not in ("agent.message", "agent.tool_use", "agent.custom_tool_use"):
+            continue
+        if not history or history[-1][0] != "assistant":
+            history.append(("assistant", []))
+        parts = history[-1][1]
+        if ev.type == "agent.message":
+            text = _text(ev.content)
+            if parts and isinstance(parts[-1], str):
+                parts[-1] += text
             else:
-                hist.append(("assistant", txt))
-        elif ev.type in ("agent.tool_use", "agent.custom_tool_use"):
-            scope = "sandbox" if ev.type == "agent.tool_use" else "local"
-            line = f"\n\n`{scope} · {ev.name}`"
-            if hist and hist[-1][0] == "assistant":
-                hist[-1] = ("assistant", hist[-1][1] + line)
-            else:
-                hist.append(("assistant", line))
-    return hist
+                parts.append(text)
+        elif (key := _tool_key(ev)) not in calls_seen:
+            calls_seen.add(key)
+            parts.append(_ToolCall(ev, results[key]))
+    return history
 
 
 def _text(content) -> str:
@@ -170,7 +298,7 @@ def chat_panel():
 def _chat_panel():
     import agent  # lazy import to avoid circular dependency
 
-    st.markdown("##### SRE AGENT")
+    st.subheader("SRE Agent")
 
     agent_id = _setup_resource("setup_agent", agent.setup_agent)
     if agent_id is None:
@@ -198,17 +326,20 @@ def _chat_panel():
     sid = st.session_state.get("sid")
     status = None
     paused = None
+    workspace = None
     if sid:
         try:
-            status = agent.client.beta.sessions.retrieve(sid).status
-            if "hist" not in st.session_state:
-                st.session_state.hist = _load_history(sid)
+            response = agent.client.beta.sessions.with_raw_response.retrieve(sid)
+            status = response.parse().status
+            workspace = response.headers.get("anthropic-workspace-id")
+            if "chat_history" not in st.session_state:
+                st.session_state.chat_history = _load_history(sid)
             if status == "idle":
                 paused = _paused_reason(agent.client, sid)
         except anthropic.NotFoundError:
             _list_sessions.clear()
             st.session_state.sid = None
-            st.session_state.hist = []
+            st.session_state.chat_history = []
             st.warning(f"Session {sid} is no longer visible. Check the ID and workspace before starting over.")
             sid = None
 
@@ -222,29 +353,41 @@ def _chat_panel():
     def _on_pick():
         chosen = st.session_state.session_picker
         st.session_state.sid = chosen
-        st.session_state.pop("hist", None)
+        st.session_state.pop("chat_history", None)
 
     if sid:
         st.session_state.session_picker = sid
     else:
         st.session_state.pop("session_picker", None)
 
-    pick_col, new_col, del_col = st.columns([6, 1, 1])
-    pick_col.selectbox(
-        "session", ids, index=None if sid is None else 0, format_func=lambda v: labels.get(v, v), disabled=not ids,
-        label_visibility="collapsed", key="session_picker", on_change=_on_pick,
-    )
-    if new_col.button("", icon=":material/add:", help="new session", use_container_width=True):
+    session_url = _console_session_url(sid, workspace) if sid else None
+    with st.container(horizontal=True, vertical_alignment="center"):
+        st.selectbox(
+            "session", ids, index=None if sid is None else 0, format_func=lambda v: labels.get(v, v),
+            disabled=not ids, label_visibility="collapsed", key="session_picker", on_change=_on_pick,
+            width=300,
+        )
+        if session_url:
+            st.link_button(
+                "Open in Claude Console", session_url, type="primary",
+                icon=":material/open_in_new:", icon_position="right",
+            )
+        new_session = st.button("", icon=":material/add:", help="new session")
+        delete_session = st.button(
+            "", icon=":material/delete:", help="delete session",
+            disabled=paused is not None or status not in ("idle", "terminated"),
+        )
+
+    if new_session:
         try:
             st.session_state.sid = agent.start_session(agent_id, env_id, log_id)
         except NotImplementedError:
             st.toast("implement `start_session()` in `agent.py`")
         else:
-            st.session_state.hist = []
+            st.session_state.chat_history = []
             _list_sessions.clear()
             st.rerun()
-    if del_col.button("", icon=":material/delete:", help="delete session",
-                      use_container_width=True, disabled=paused is not None or status not in ("idle", "terminated")):
+    if delete_session:
         try:
             agent.delete_session(st.session_state.sid)
         except NotImplementedError:
@@ -252,71 +395,83 @@ def _chat_panel():
         else:
             _list_sessions.clear()
             del st.session_state["sid"]
-            st.session_state.pop("hist", None)
+            st.session_state.pop("chat_history", None)
             st.rerun()
 
-    if not sid:
+    if not session_url:
         st.caption("Select an existing session or click **+** to start one." if ids
                    else "no sessions — click **+** to start one")
         st.chat_input("ask…", disabled=True, key="off_nosession")
         return
 
-    st.caption(f"`{sid}` — persisted in the cloud, not this browser")
+    st.caption(f"Session ID · `{sid}`")
 
-    chat = st.container(height=400, border=False)
+    chat = st.container()
     with chat:
-        for role, text in st.session_state.hist:
+        for role, parts in st.session_state.chat_history:
             with st.chat_message(role):
-                st.markdown(text)
+                for part in parts:
+                    if isinstance(part, str):
+                        st.markdown(part)
+                    else:
+                        _render_tool_call(part, session_url)
 
     if status in ("running", "rescheduling"):
         st.info(f"Session {sid} is {status}. Reopen it after the current work finishes.")
     if paused:
         st.warning(f"Session {sid} is paused ({paused}). Inspect it in Console before sending again.")
     if q := st.chat_input("ask the agent…", disabled=status != "idle" or paused is not None):
-        st.session_state.hist.append(("user", q))
+        st.session_state.chat_history.append(("user", [q]))
         with chat:
             with st.chat_message("user"):
                 st.markdown(q)
             with st.chat_message("assistant"):
-                text_ph = st.empty()
+                text_ph = None
                 buf = ""
-                turn_text = []
+                turn: list[_ChatPart] = []
                 local_calls = set()
                 answered = set()
-                tool_boxes: dict[str, object] = {}
+                tool_cards: dict[_ToolKey, tuple[_ToolCall, DeltaGenerator, DeltaGenerator]] = {}
+                results: dict[_ToolKey, dict[str, _ToolResult]] = defaultdict(dict)
+
+                def flush_text():
+                    nonlocal buf, text_ph
+                    if buf:
+                        turn.append(buf)
+                    buf = ""
+                    text_ph = None
+
                 try:
                     for ev in agent.stream_reply(st.session_state.sid, q):
                         if ev.type == "agent.message":
                             buf += _text(ev.content)
+                            if text_ph is None:
+                                text_ph = st.empty()
                             text_ph.markdown(buf)
                         elif ev.type in ("agent.tool_use", "agent.custom_tool_use"):
-                            scope = "sandbox" if ev.type == "agent.tool_use" else "local"
-                            box = st.status(f"{scope} · {ev.name}", state="running")
-                            args = json.dumps(ev.input)
-                            box.caption("args")
-                            box.code(args if args != "{}" else "(none)", language="json")
-                            tool_boxes[ev.id] = box
-                            if scope == "local":
+                            key = _tool_key(ev)
+                            if key not in tool_cards:
+                                flush_text()
+                                call = _ToolCall(ev, results[key])
+                                turn.append(call)
+                                heading, result_area = _render_tool_call(call, session_url, waiting=True)
+                                tool_cards[key] = call, heading, result_area
+                            if ev.type == "agent.custom_tool_use":
                                 local_calls.add(ev.id)
-                        elif ev.type == "agent.tool_result":
-                            box = tool_boxes.pop(ev.tool_use_id, None)
-                            if box:
-                                box.caption("result")
-                                box.code(_text(ev.content)[:1500] or "(empty)", language="text")
-                                box.update(state="complete")
-                        elif ev.type == "user.custom_tool_result":
-                            answered.add(ev.custom_tool_use_id)
-                            box = tool_boxes.pop(ev.custom_tool_use_id, None)
-                            if box:
-                                box.caption("result")
-                                box.code(_text(ev.content)[:1500] or "(empty)", language="text")
-                                box.update(state="complete")
+                        elif ev.type in ("agent.tool_result", "user.custom_tool_result"):
+                            if ev.type == "user.custom_tool_result":
+                                answered.add(ev.custom_tool_use_id)
+                            key = _tool_key(ev)
+                            if ev.id in results[key]:
+                                continue
+                            results[key][ev.id] = ev
+                            if key in tool_cards:
+                                call, heading, result_area = tool_cards[key]
+                                _render_tool_heading(heading, call)
+                                with result_area:
+                                    _render_tool_result(ev)
                         elif ev.type == "span.model_request_start":
-                            if buf:
-                                turn_text.append(buf)
-                            text_ph = st.empty()
-                            buf = ""
+                            flush_text()
                         elif ev.type == "session.status_idle":
                             reason = ev.stop_reason
                             reason_type = getattr(reason, "type", "unknown reason")
@@ -349,8 +504,9 @@ def _chat_panel():
                 except (KeyError, TypeError, ValueError):
                     st.error(f"The tool handler or event stream returned unexpected data. Check session {sid} and agent.py.")
                 finally:
-                    for box in tool_boxes.values():
-                        box.caption("Result unavailable in this stream.")
-                        box.update(state="error")
-        if response := "\n\n".join([*turn_text, buf]).strip():
-            st.session_state.hist.append(("assistant", response))
+                    flush_text()
+                    for call, heading, _ in tool_cards.values():
+                        if not call.results:
+                            _render_tool_heading(heading, call)
+        if turn:
+            st.session_state.chat_history.append(("assistant", turn))

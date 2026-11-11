@@ -30,11 +30,9 @@ if not LOG_FIXTURE.exists():
             st.stop()
 
 
-def overview():
-    main, side = st.columns([5, 3], gap="large")
-
-    with main:
-        st.title("INCIDENT-2277")
+def investigation():
+    st.title("Incident 2277")
+    with st.expander("Incident overview"):
         alert_banner()
 
         DATA = Path(__file__).parent / "data"
@@ -67,13 +65,12 @@ def overview():
             language=None,
         )
 
-    with side:
-        chat_panel()
+    chat_panel()
 
 
 st.navigation([
-    st.Page(overview, title="Overview", default=True),
+    st.Page(investigation, title="Investigation", default=True),
     st.Page("pages/1_Metrics.py", title="Metrics"),
     st.Page("pages/2_Logs.py", title="Logs"),
     st.Page("pages/3_Deploys.py", title="Deploys"),
-]).run()
+], position="top").run()

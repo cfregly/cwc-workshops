@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 .venv/
+/.venv-backup-*/
 .DS_Store
 data/app.log
 .claude/

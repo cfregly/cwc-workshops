@@ -10,8 +10,8 @@
 > check, repeat. Which commit caused the spike?
 
 A working incident dashboard for a fictional e-commerce stack. The Metrics,
-Logs, and Deploys pages run out of the box from mock data. There's an
-**SRE Agent** chat panel on the side of every page. It starts offline.
+Logs, and Deploys pages run from mock data. The **Investigation** page opens
+first and gives the SRE Agent and its tool calls the full width. It starts offline.
 Bring it online with seven small functions in `agent.py` using
 [Claude Managed Agents](https://platform.claude.com/docs/en/managed-agents/overview).
 
@@ -21,7 +21,7 @@ and deploys, correlate the timestamps, and inspect the candidate diff.
 
 ## Setup
 
-You need Python **3.10+** and an Anthropic API key from Claude Console or your instructor. Clone from a fresh parent folder to avoid reusing an older checkout. If Git is unavailable, extract the source ZIP into a fresh folder and open `ship-your-first-managed-agent`. [API keys](https://platform.claude.com/settings/keys) · [Workshop source ZIP](https://github.com/cfregly/cwc-workshops/archive/refs/heads/gagan-sre-workshop.zip)
+You need Python **3.10.20** and an Anthropic API key from Claude Console or your instructor. The commands below install that Python version. Clone from a fresh parent folder to avoid reusing an older checkout. If Git is unavailable, extract the source ZIP into a fresh folder and open `ship-your-first-managed-agent`. [API keys](https://platform.claude.com/settings/keys) · [Workshop source ZIP](https://github.com/cfregly/cwc-workshops/archive/refs/heads/gagan-sre-workshop.zip)
 
 ```bash
 git clone --branch gagan-sre-workshop --single-branch https://github.com/cfregly/cwc-workshops.git cwc-workshops/
@@ -39,39 +39,85 @@ Expect the branch `gagan-sre-workshop`. Keep the full commit SHA printed by `git
 
 ### Create the virtual environment
 
-Use the Python **3.10 or newer** already installed on your laptop. Python **3.10.20** is the rehearsal baseline. If `.venv` already exists, check its version and path before reusing it. Use a fresh environment if it points to the wrong interpreter.
+Run these commands from `ship-your-first-managed-agent`, the folder containing `requirements.txt`. The [Python pin](.python-version) tells uv which interpreter to use for this workshop's `.venv`. Activating `.venv` makes that Python available as `python` in the current shell.
 
-**macOS or Linux**
+**macOS or Linux (zsh or Bash)**
 
-```bash
-python3 --version
-python3 -m venv .venv
-```
-
-If `python3` points to an older interpreter, use the full path to your installed Python 3.10 or newer in the `-m venv` command. Check the new environment and install the pinned packages.
+If you need to create `.venv`, run `uv --version`. If uv is missing or reports a version other than `0.13.7`, install the workshop's version and put it first on this terminal's PATH.
 
 ```bash
-.venv/bin/python -c "import sys; print(sys.version.split()[0], sys.executable)"
-.venv/bin/python -m pip --version
-.venv/bin/python -m pip install -r requirements.txt
+curl -LsSf https://astral.sh/uv/0.13.7/install.sh | UV_NO_MODIFY_PATH=1 UV_INSTALL_DIR="$HOME/.local/bin" sh
+export PATH="$HOME/.local/bin:$PATH"
+uv --version
 ```
 
-**Windows PowerShell**
+If `.venv` already exists, run `.venv/bin/python --version`. Reuse it if it reports `Python 3.10.20` and start at `source` below. To replace a different version, open a fresh terminal in the workshop folder and move the old environment aside.
 
-```powershell
-py -3 --version
-py -3 -m venv .venv
+```bash
+mv .venv ".venv-backup-$(date +%Y%m%d-%H%M%S)"
 ```
 
-If the `py` launcher is unavailable, check `python --version` and run `python -m venv .venv` with Python 3.10 or newer. If `py -3` selects an older interpreter, run `py -0p` to see installed versions and choose the one you want. Check the new environment and install the pinned packages without activating it.
+Create `.venv` and install the pip bundled with this Python build.
+
+```bash
+uv venv --python 3.10.20 --managed-python .venv && .venv/bin/python -m ensurepip
+```
+
+Activate `.venv` and check which Python and pip you are using.
+
+```bash
+source .venv/bin/activate
+python --version
+command -v python
+python -m pip --version
+```
+
+Expect `Python 3.10.20` and paths inside `.venv`. Then install the locked packages.
+
+```bash
+python -m pip install --require-hashes -r requirements.lock.txt
+```
+
+Run `source .venv/bin/activate` in each new terminal. Run `deactivate` to leave the environment.
+
+**Windows PowerShell (x64)**
+
+If you need uv, install it, then open a new PowerShell window in the workshop folder. [Astral uv installation](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
 
 ```powershell
-& .\.venv\Scripts\python.exe -c "import sys; print(sys.version.split()[0], sys.executable)"
+powershell -ExecutionPolicy Bypass -c "irm https://astral.sh/uv/0.13.7/install.ps1 | iex"
+```
+
+If `.venv` already exists, run `& .\.venv\Scripts\python.exe --version`. Reuse it if it reports `Python 3.10.20` and skip the creation commands below. To replace a different version, open a fresh PowerShell window in the workshop folder and move the old environment aside.
+
+```powershell
+Rename-Item -LiteralPath .venv -NewName ('.venv-backup-' + (Get-Date -Format yyyyMMdd-HHmmss))
+```
+
+Create `.venv` and install the pip bundled with this Python build. The `if` runs `ensurepip` after uv succeeds.
+
+```powershell
+uv venv --python 3.10.20 --managed-python .venv
+if ($LASTEXITCODE -eq 0) { & .\.venv\Scripts\python.exe -m ensurepip }
+```
+
+Use the venv's Python directly. This also works when PowerShell blocks activation scripts.
+
+```powershell
+& .\.venv\Scripts\python.exe --version
+& .\.venv\Scripts\python.exe -c "import sys; print(sys.executable)"
 & .\.venv\Scripts\python.exe -m pip --version
-& .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-The executable and pip paths should both point into `.venv`. The requirements file pins `anthropic==1.0.0`, `streamlit==1.65.0`, `plotly==7.1.0`, and `python-dotenv==1.2.4`. Anthropic SDK 1.0.0 supports the workshop's `display_title` argument when uploading the skill. [Pinned requirements](requirements.txt) · [Skills API compatibility](https://platform.claude.com/docs/en/build-with-claude/skills-guide#migrate-from-skills-2025-10-02)
+Expect `Python 3.10.20` and paths inside `.venv`. Then install the locked packages.
+
+```powershell
+& .\.venv\Scripts\python.exe -m pip install --require-hashes -r requirements.lock.txt
+```
+
+If you prefer to activate the environment, run `.\.venv\Scripts\Activate.ps1` and then use `python`. Run `deactivate` to leave it.
+
+The lock pins the workshop packages and their dependencies by version and verifies downloaded wheels against recorded hashes. Anthropic SDK 1.0.0 supports the workshop's `display_title` argument when uploading the skill. [Direct requirements](requirements.txt) · [Dependency lock](requirements.lock.txt) · [Skills API compatibility](https://platform.claude.com/docs/en/build-with-claude/skills-guide#migrate-from-skills-2025-10-02)
 
 ### Set the key privately
 
@@ -97,7 +143,7 @@ Open `.env` privately and set `ANTHROPIC_API_KEY` to the intended key. If your s
 
 ### Check setup and start the dashboard
 
-Run the included checker with the venv Python. It checks your current folder, interpreter, installed pins, key setup, files and starter syntax, checks dependency consistency and Managed Agents read access, then opens the dashboard if the checks pass. Keep the key off screen. The stock app generates the synthetic log on first launch if it is missing.
+Run the included checker with the venv Python. It requires the exact Python version in `.python-version` before checking installed packages, dependency consistency, local files, starter syntax, and your key. The command below also checks Managed Agents read access and opens the dashboard if the checks pass. Keep the key off screen. The app generates the synthetic log on first launch if it is missing.
 
 **macOS or Linux**
 
@@ -111,7 +157,7 @@ Run the included checker with the venv Python. It checks your current folder, in
 & .\.venv\Scripts\python.exe check_setup.py --check-access --launch
 ```
 
-Open the **URL** Streamlit prints. The SRE Agent panel on the right says it is offline and asks you to implement `setup_agent()` in `agent.py`. If your key is still being issued, read the local fixtures while the access owner helps. For an error, open [Troubleshooting](#troubleshooting).
+Open the **URL** Streamlit prints. The Investigation page says the SRE Agent is offline and asks you to implement `setup_agent()` in `agent.py`. If your key is still being issued, read the local fixtures while the access owner helps. For an error, open [Troubleshooting](#troubleshooting).
 
 ## What you build
 
@@ -148,7 +194,9 @@ Compare checkout metrics and recent deploys, inspect the candidate diff, and
 confirm a clue in the log. Write your suspect, one checked fixture fact, and
 one uncertainty before sharing your answer.
 
-While the turn runs, the dashboard shows tool inputs and result excerpts. Reopening the same session from the picker replays message text and tool names. The picker shows up to 15 sessions for the agent and replay loads one page of up to 500 events. For full inputs and results, find the exact session ID printed below the picker in the same workspace in Claude Console Sessions. Compare the local tool request's `id` with the result's `custom_tool_use_id`. The Console viewer requires Developer or Admin access. [Console Sessions](https://platform.claude.com/sessions) · [Inspect a session](https://platform.claude.com/docs/en/managed-agents/session-observability)
+Each tool card shows its full call event ID. Use **Copy ID** for event IDs and **Copy Contents** for tool inputs and outputs. Expand **Input and result** to see formatted JSON or text and the result's own ID. The same cards appear when you reopen a session from the picker.
+
+Click **Open in Claude Console** next to the session picker to open the session. Click the **↗** beside a call's **Copy ID** to jump to that call. In **Inspector → Events**, match a local call's ID to the result's `custom_tool_use_id`. Sign in with your own Console account and use a session workspace where you have Developer or Admin access. You can also trace the exchange in Streamlit from the same card. [Console Sessions](https://platform.claude.com/sessions) · [Inspect a session](https://platform.claude.com/docs/en/managed-agents/session-observability#inspect-a-session-in-the-console)
 
 ## What this teaches
 
@@ -181,7 +229,7 @@ Run the checker with neither flag for local diagnostics. It reports issues witho
 Add `--check-access` to that command to test read access with your issued key without launching the dashboard. The checker sends a single list request to the first-party Claude API. This can catch a 401 or 403 before you create resources. A pass confirms read access, while model access and resource creation have their own checks. Use the dashboard or Console for live session state and tool results.
 
 - **Missing files or no Git.** Open the workshop subfolder in a fresh clone or the [workshop ZIP](https://github.com/cfregly/cwc-workshops/archive/refs/heads/gagan-sre-workshop.zip). Keep your existing edits. `provided.py` reads the fixtures relative to the current directory.
-- **Missing venv, wrong Python, or import failure.** Return to [Create the virtual environment](#create-the-virtual-environment). Use Python 3.10 or newer, then install and launch using that venv's executable. The tested presenter version is 3.10.20. If pip reports a wheel, index or network error, share that first error. Let an install continue while it is making progress.
+- **Missing venv, wrong Python, or import failure.** Return to [Create the virtual environment](#create-the-virtual-environment) and use Python 3.10.20. If an older uv reports that the interpreter is unavailable, use the versioned installer above. On macOS, use `"$HOME/.local/bin/uv"` in the creation command if your shell still finds the older uv. On Windows, reopen PowerShell after installing. If pip reports a wheel, index or network error, share that first error.
 - **Missing or incomplete log.** Run `.venv/bin/python data/generate_log.py` or, in PowerShell, `& .\.venv\Scripts\python.exe data/generate_log.py`. This regenerates the synthetic `data/app.log` and reports its line count. Wait for generation before upload.
 - **Dashboard fails to open.** Read the terminal error and use the local URL Streamlit prints. If a previous copy is still running, use its printed URL or close only your own idle process before restarting.
 - **A save shows no progress.** Check that you edited `agent.py` in the folder the dashboard runs from. Save one complete function, then use the next checkpoint in [What you build](#what-you-build). Follow the first relevant traceback line. Run the checker again to locate a syntax or indentation error. Compare just the current function with the reference if you need help.
@@ -193,21 +241,21 @@ Add `--check-access` to that command to test read access with your issued key wi
    macOS or Linux:
 
    ```bash
-   .venv/bin/python -m pip install -r requirements.txt
+   .venv/bin/python -m pip install --require-hashes -r requirements.lock.txt
    .venv/bin/python -m pip show anthropic
    ```
 
    Windows PowerShell:
 
    ```powershell
-   & .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+   & .\.venv\Scripts\python.exe -m pip install --require-hashes -r requirements.lock.txt
    & .\.venv\Scripts\python.exe -m pip show anthropic
    ```
 
    If a dashboard is running, finish its active turn and record the resource IDs before restarting it with that interpreter. Keep the workshop's `display_title` argument.
 
 2. **The dashboard shows a session ID and no answer.** Clicking **+** creates a session and begins sandbox provisioning. Finish and save both `stream_reply()` and `handle_tool()`, then send your message once from the dashboard. The `user.message` event starts a model turn. If you already sent it, inspect that same session's status and events before sending again. Keep Streamlit running while its local handler is needed.
-3. **Refreshing lost the tool inputs or results.** Record the full session ID shown under the picker and capture the tool boxes before you refresh. Let an active turn finish first so the local worker can return pending results. Reselect that same ID to replay messages and tool names. For the detailed trace, open [Console Sessions](https://platform.claude.com/sessions), select the key's workspace and find the ID you recorded. Developer or Admin access is needed. If that view is unavailable, use your retained tool evidence or ask the instructor for a labeled practice trace.
+3. **A tool result is missing after reopening.** Let an active turn finish so the local worker can return pending results. Reopen the session and match the card's call ID to the result reference. If the result is still missing, use **Open in Claude Console** to inspect the same session. If the link does not open it, select the key's workspace in [Console Sessions](https://platform.claude.com/sessions) and find the full session ID shown below the dashboard picker. If you lack Console access, ask the instructor for a labeled practice trace.
 
 ### API access, a quiet stream, or cleanup
 
@@ -219,6 +267,10 @@ Add `--check-access` to that command to test read access with your issued key wi
 - **Delete is blocked or the run is still active.** Save `delete_session()`, verify the full ID and finished state of your own session, and click delete once. Keep active or ambiguous sessions for follow-up with the instructor. Record file, skill, environment and agent IDs for separate workspace cleanup. `e2e.py` creates another set of resources and is unsuitable as a recovery command. [Session deletion](https://platform.claude.com/docs/en/managed-agents/session-operations#deleting-a-session)
 
 If a hosted step is blocked, check one fixture fact locally and practice matching a request and result with the instructor's trace. Report what you verified and which hosted step you still need to complete.
+
+## Maintaining the setup
+
+When changing Python, update `.python-version` and the version in the setup commands. When Python or a direct dependency changes, regenerate `requirements.lock.txt` using the command in its header. On macOS, build a fresh `.venv` from the updated lock and run `check_setup.py`. After changes to the SDK or session flow, verify a hosted incident turn, replay, and cleanup.
 
 ## Repo layout
 
