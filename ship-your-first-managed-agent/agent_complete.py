@@ -25,6 +25,8 @@ def setup_agent() -> str:
         display_title=f"Incident Triage Runbook {uuid.uuid4().hex[:6]}",
         files=files_from_dir("incident-triage-runbook"),
     )
+    # Keep the uploaded Skill ID available if agent creation fails.
+    st.session_state["setup_skill_id"] = skill.id
     agent = client.beta.agents.create(
         name="SRE Agent",
         model="claude-opus-4-8",

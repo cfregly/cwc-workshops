@@ -12,6 +12,7 @@ from functools import cache
 from html import escape
 from pathlib import Path
 import re
+import sys
 from threading import Lock
 from urllib.parse import quote
 
@@ -25,7 +26,7 @@ from anthropic.types.beta.sessions import (
 )
 from streamlit.delta_generator import DeltaGenerator
 
-DATA = Path("data")
+DATA = Path(__file__).resolve().parent / "data"
 
 SYSTEM = """\
 You are the SRE Agent — an SRE/data-analyst agent embedded in an incident
@@ -329,20 +330,24 @@ def _setup_resource(name, operation):
                 st.error(message)
                 return None
             del errors[name]
+        if name == "setup_agent":
+            st.session_state.pop("setup_skill_id", None)
         try:
             resource_id = operation()
-            if isinstance(resource_id, str) and resource_id:
-                return resource_id
-            st.error(f"{name}() must return the resource ID. Check the reference and any existing resource before retrying.")
         except NotImplementedError:
             _offline(name)
+            return None
         except (anthropic.APIStatusError, anthropic.APIConnectionError) as error:
-            recovery = (" A Skill may already have uploaded." if name == "setup_agent" else "")
-            message = f"{name}(): {_api_error(error)}{recovery} Check existing resources before retrying."
-            errors[name] = message
-            st.error(message)
-            st.rerun()
-    return None
+            message = f"{name}(): {_api_error(error)}"
+        else:
+            if isinstance(resource_id, str) and resource_id.strip():
+                return resource_id
+            message = f"{name}() must return the resource ID. Check its return statement."
+        if name == "setup_agent":
+            skill_id = st.session_state.get("setup_skill_id")
+            message += f" Runbook Skill uploaded: `{skill_id}`." if skill_id else " A Skill may already have uploaded."
+        errors[name] = f"{message} Check existing resources before retrying."
+        st.rerun()
 
 
 def _pending_actions(client, sid, pending):
@@ -358,16 +363,26 @@ def _pending_actions(client, sid, pending):
     return pending
 
 
-def _paused_reason(client, sid):
-    page = client.beta.sessions.events.list(sid, types=["session.status_idle"], order="desc", limit=1)
+def _idle_reason(client, sid):
+    page = client.beta.sessions.events.list(
+        sid, types=["user.message", "session.status_idle"], order="desc", limit=1,
+    )
     if not page.data:
         return None
-    reason = page.data[0].stop_reason
-    if reason.type == "requires_action" and _pending_actions(client, sid, set(reason.event_ids)):
-        return "requires_action"
-    if reason.type == "budget_reached":
-        return "budget_reached"
-    return None
+    event = page.data[0]
+    if event.type == "user.message":
+        return "starting_turn"
+    reason = event.stop_reason
+    if reason.type == "requires_action" and reason.event_ids:
+        if not _pending_actions(client, sid, set(reason.event_ids)):
+            return "waiting_to_resume"
+    return reason.type
+
+
+def _pause_message(sid, reason):
+    if reason == "requires_action":
+        return f"Session {sid} is waiting for a tool result or confirmation. Check its events before sending again."
+    return f"Session {sid} paused ({reason}). Check its events before sending again."
 
 
 def chat_panel():
@@ -378,9 +393,17 @@ def chat_panel():
 
 
 def _chat_panel():
-    import agent  # lazy import to avoid circular dependency
-
     st.subheader("SRE Agent")
+    with st.expander("Diagnostics"):
+        st.code(
+            f"Workshop folder: {Path(__file__).resolve().parent}\n"
+            f"Python executable: {sys.executable}\n"
+            f"Anthropic SDK: {anthropic.__version__}",
+            language=None,
+            wrap_lines=True,
+        )
+
+    import agent  # lazy import to avoid circular dependency
 
     agent_id = _setup_resource("setup_agent", agent.setup_agent)
     if agent_id is None:
@@ -410,7 +433,7 @@ def _chat_panel():
             st.session_state.sid = listed[0][0]
     sid = st.session_state.get("sid")
     status = None
-    paused = None
+    idle_reason = None
     missing_sid = None
     workspace = agent_workspace
     if sid:
@@ -421,7 +444,7 @@ def _chat_panel():
             if "chat_history" not in st.session_state:
                 st.session_state.chat_history = _load_history(sid)
             if status == "idle":
-                paused = _paused_reason(agent.client, sid)
+                idle_reason = _idle_reason(agent.client, sid)
         except anthropic.NotFoundError:
             missing_sid = sid
             _list_sessions.clear()
@@ -442,6 +465,7 @@ def _chat_panel():
             st.session_state.pop("chat_history", None)
 
     session_url = _console_url("sessions", sid, workspace) if sid else None
+    waiting = idle_reason in ("starting_turn", "waiting_to_resume", "requires_action", "budget_reached")
     with st.container(horizontal=True, vertical_alignment="center"):
         _session_console_component()(
             key="workshop_session_console", on_selected_change=_on_pick, width=410,
@@ -450,7 +474,7 @@ def _chat_panel():
         new_session = st.button("", icon=":material/add:", help="new session")
         delete_session = st.button(
             "", icon=":material/delete:", help="delete session",
-            disabled=paused is not None or status not in ("idle", "terminated"),
+            disabled=waiting or status not in ("idle", "terminated"),
         )
 
     if new_session:
@@ -491,11 +515,21 @@ def _chat_panel():
                     else:
                         _render_tool_call(part, session_url)
 
+    turn_status = st.empty()
     if status in ("running", "rescheduling"):
-        st.info(f"Session {sid} is {status}. Reopen it after the current work finishes.")
-    if paused:
-        st.warning(f"Session {sid} is paused ({paused}). Inspect it in Console before sending again.")
-    if q := st.chat_input("ask the agent…", disabled=status != "idle" or paused is not None):
+        turn_status.info(f"Session {sid} is {status}. Reopen it after the current work finishes.")
+    elif idle_reason == "starting_turn":
+        turn_status.info("Message received. Waiting for the turn to start.")
+    elif idle_reason == "waiting_to_resume":
+        turn_status.info("Tool reply received. Waiting for the turn to continue.")
+    elif idle_reason in ("requires_action", "budget_reached"):
+        turn_status.warning(_pause_message(sid, idle_reason))
+    elif idle_reason == "end_turn":
+        turn_status.caption("Turn finished.")
+    elif status == "idle" and not st.session_state.chat_history:
+        turn_status.caption("Session created. Send a message to start a turn.")
+    if q := st.chat_input("ask the agent…", disabled=status != "idle" or waiting):
+        turn_status.empty()
         st.session_state.chat_history.append(("user", [q]))
         with chat:
             with st.chat_message("user"):
@@ -551,6 +585,7 @@ def _chat_panel():
                             reason = ev.stop_reason
                             reason_type = getattr(reason, "type", "unknown reason")
                             if reason_type == "end_turn":
+                                turn_status.caption("Turn finished.")
                                 break
                             if reason_type == "requires_action":
                                 pending = set(reason.event_ids) - answered
@@ -560,7 +595,7 @@ def _chat_panel():
                                     pending = _pending_actions(agent.client, sid, pending)
                                 if reason.event_ids and not pending:
                                     continue
-                            st.warning(f"Session {sid} paused ({reason_type}). Inspect this session before sending again.")
+                            turn_status.warning(_pause_message(sid, reason_type))
                             break
                         elif ev.type == "session.error":
                             retrying = getattr(getattr(ev.error, "retry_status", None), "type", None) == "retrying"

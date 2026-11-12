@@ -157,7 +157,7 @@ Run the checker with the venv Python. It checks the pinned Python and packages, 
 & .\.venv\Scripts\python.exe check_setup.py --check-access --launch
 ```
 
-Open the **URL** Streamlit prints. The Investigation page says the SRE Agent is offline and asks you to implement `setup_agent()` in `agent.py`. If your key is still being issued, read the local fixtures while the access owner helps. For an error, open [Troubleshooting](#troubleshooting).
+Open the **URL** Streamlit prints. The Investigation page says the SRE Agent is offline and asks you to implement `setup_agent()` in `agent.py`. Expand **Diagnostics** to see the workshop folder, Python executable, and Anthropic SDK version used by the dashboard. If your key is still being issued, read the local fixtures while the access owner helps. For an error, open [Troubleshooting](#troubleshooting).
 
 ## What you build
 
@@ -180,7 +180,7 @@ The system prompt, tool schemas, runbook skill, chat UI, and session picker are 
 Stuck? `agent_complete.py` has the finished versions. Compare just the function
 you're working on. [Starter](agent.py) · [Reference](agent_complete.py)
 
-Session creation begins sandbox provisioning. The first message starts model work. After adding the stream and local handler, send `hey`, then ask **“What caused the latency spike?”**
+Session creation begins sandbox provisioning. The dashboard shows **Session created. Send a message to start a turn.** After adding the stream and local handler, send `hey`. Wait for **Turn finished.** Then ask **“What caused the latency spike?”**
 
 ## The incident
 
@@ -228,15 +228,15 @@ Run the checker with neither flag for local diagnostics. It reports issues witho
 
 Add `--check-access` to that command to test read access with your issued key without launching the dashboard. The checker sends a single list request to the first-party Claude API. This can catch a 401 or 403 before you create resources. A pass confirms read access, while model access and resource creation have their own checks. Use the dashboard or Console for live session state and tool results.
 
-- **Missing files or no Git.** Open the workshop subfolder in a fresh clone or the [workshop ZIP](https://github.com/cfregly/cwc-workshops/archive/refs/heads/gagan-sre-workshop.zip). Keep your existing edits. `provided.py` reads the fixtures relative to the current directory.
+- **Missing files or no Git.** Open the workshop subfolder in a fresh clone or the [workshop ZIP](https://github.com/cfregly/cwc-workshops/archive/refs/heads/gagan-sre-workshop.zip). Keep your existing edits and run the checker from the folder containing `app.py`.
 - **Missing venv, wrong Python, or import failure.** Return to [Create the virtual environment](#create-the-virtual-environment) and use Python 3.10.20. If an older uv reports that the interpreter is unavailable, use the versioned installer above. On macOS, use `"$HOME/.local/bin/uv"` in the creation command if your shell still finds the older uv. On Windows, reopen PowerShell after installing. If pip reports a wheel, index or network error, share that first error.
 - **Missing or incomplete log.** The launch command generates a missing log. If the dashboard is already open or the checker reports an incomplete log, run `.venv/bin/python data/generate_log.py` or, in PowerShell, `& .\.venv\Scripts\python.exe data/generate_log.py` from the workshop folder. Wait for 69,740 lines, then look for the file ID after upload.
 - **Dashboard fails to open.** Read the terminal error and use the local URL Streamlit prints. If a previous copy is still running, use its printed URL or close only your own idle process before restarting.
-- **A save shows no progress.** Check that you edited `agent.py` in the folder the dashboard runs from. Save one complete function, then use the next checkpoint in [What you build](#what-you-build). Follow the first relevant traceback line. Run the checker again to locate a syntax or indentation error. Compare just the current function with the reference if you need help.
+- **A save shows no progress.** Check the folder and interpreter in **Diagnostics**. Save one complete function, then use the next checkpoint in [What you build](#what-you-build). If the dashboard pauses because a function returned no resource ID, fix its return value and check for a resource from the first attempt before choosing **Retry after checking existing resources**. For syntax or indentation errors, run the checker again.
 
 ### Three traps
 
-1. **`display_title` raises `TypeError`.** The Skills call is using an incompatible SDK and fails before HTTP. Run the checker with the Python that launches Streamlit. It expects Anthropic SDK **1.0.0**. From this checkout, reinstall the pinned requirements using the same venv interpreter, then run the version check again.
+1. **`display_title` raises `TypeError`.** An incompatible SDK can reject this argument before HTTP. Check **Diagnostics** for the Python and SDK running Streamlit. The checker expects Anthropic SDK **1.0.0**. Reinstall the pinned requirements with the same venv interpreter, then run the version check again.
 
    macOS or Linux:
 
@@ -260,13 +260,13 @@ Add `--check-access` to that command to test read access with your issued key wi
 ### API access, a quiet stream, or cleanup
 
 - **Missing key or 401.** Set the intended key privately. An exported value can override `.env`, even if that value is blank. Clear a stale value with `unset ANTHROPIC_API_KEY` on macOS or Linux or `Remove-Item Env:ANTHROPIC_API_KEY` in PowerShell. Restart your Streamlit process after correcting it. If resource creation already started, record the IDs first.
-- **Read access passes, but creating the agent reports insufficient credits.** Listing environments confirms Managed Agents read access. Creation and model use have separate billing checks. Record the request ID and time, and stop rerunning `setup_agent()`. Its skill upload can succeed before agent creation fails. Ask the instructor to reconcile that upload and confirm the workshop workspace has API credits. After correcting the key or workspace, restart Streamlit using the launch command above.
+- **Read access passes, but creating the agent reports insufficient credits.** Listing environments confirms Managed Agents read access. Creation and model use have separate billing checks. Record the request ID, time, and Runbook Skill ID if shown. Ask the instructor to reconcile the upload and confirm the workshop workspace has API credits before retrying. After correcting the key or workspace, restart Streamlit using the launch command above.
 - **403 or 404.** A 403 means the request lacks permission for that resource. With a 404, check that the ID exists and is visible in the intended workspace. Ask the workspace owner to check access using the operation, status and request ID. Use the local fixtures while access is checked. [Claude API errors](https://platform.claude.com/docs/en/api/errors)
 - **Upload is slow, or API returns 429 or a server error.** Let a progressing upload finish. If the API reports an error, keep the resource IDs and request ID. Follow any retry instruction in the response. The SDK makes one attempt per request. After a failed or interrupted create, check whether the resource already exists. If the dashboard paused a setup step, use **Retry after checking existing resources** once you've reconciled the prior attempt.
-- **A paused session, missing tool result, or disconnect.** Open the same session and find the last event. Match `agent.custom_tool_use.id` to `user.custom_tool_result.custom_tool_use_id`. A match confirms the reply reached the service. The dashboard marks results missing from its stream and displays reported pause or stop reasons. Reopening history does not resume a pending handler. If the worker is gone, capture the ID and ask the instructor to help reconcile the session before starting a replacement. [Session events](https://platform.claude.com/docs/en/managed-agents/events-and-streaming)
+- **A paused session, missing tool result, or disconnect.** Let an active turn finish before sending again or deleting the session. When the dashboard reports a pending turn or tool reply, it disables those controls. Open the same session and find the last event. Match `agent.custom_tool_use.id` to `user.custom_tool_result.custom_tool_use_id`. A match confirms the reply reached the service. The dashboard marks results missing from its stream and displays reported pause or stop reasons. Reopening history does not resume a pending handler. If the worker is gone, capture the ID and ask the instructor to help reconcile the session before starting a replacement. [Session events](https://platform.claude.com/docs/en/managed-agents/events-and-streaming)
 - **Delete is blocked or the run is still active.** Save `delete_session()`, verify the full ID and finished state of your own session, and click delete once. Keep active or ambiguous sessions for follow-up with the instructor. Record file, skill, environment and agent IDs for separate workspace cleanup. `e2e.py` creates another set of resources and is unsuitable as a recovery command. [Session deletion](https://platform.claude.com/docs/en/managed-agents/session-operations#deleting-a-session)
 
-If a hosted step is blocked, check one fixture fact locally and practice matching a request and result with the instructor's trace. Report what you verified and which hosted step you still need to complete.
+If a hosted step is blocked, check one fixture fact locally. The Metrics page shows the checkout p99 peak and its UTC time below the latency chart. Practice matching a request and result with the instructor's trace. Report what you verified and which hosted step you still need to complete.
 
 ## Maintaining the setup
 

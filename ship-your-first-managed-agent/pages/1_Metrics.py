@@ -1,7 +1,7 @@
 # Copyright 2026 Anthropic PBC
 # SPDX-License-Identifier: Apache-2.0
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import plotly.graph_objects as go
@@ -50,5 +50,10 @@ def chart(metric_name: str, title: str, yfmt: str | None = None):
 
 
 chart("p99_latency_ms", "P99 LATENCY (ms)")
+if checkout_p99 := metrics.get("checkout", {}).get("p99_latency_ms"):
+    peak = max(checkout_p99, key=lambda row: row["value"])
+    peak_time = ts(peak["ts"]).astimezone(timezone.utc)
+    st.caption(f"Checkout p99 peaked at **{peak['value']:,.3f} ms** at **{peak_time:%H:%M} UTC**.")
+
 chart("error_rate", "ERROR RATE", ".1%")
 chart("db_pool_utilization", "DB POOL UTILIZATION", ".0%")

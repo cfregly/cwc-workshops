@@ -1,13 +1,12 @@
 # Copyright 2026 Anthropic PBC
 # SPDX-License-Identifier: Apache-2.0
 import json
-from pathlib import Path
 
 import streamlit as st
 from dotenv import load_dotenv
 
 from ui import inject_style, alert_banner
-from provided import chat_panel
+from provided import DATA, chat_panel
 
 load_dotenv()
 st.set_page_config(page_title="Incident · 2277", page_icon="▮", layout="wide")
@@ -16,7 +15,7 @@ inject_style()
 # Generate the synthetic log fixture on first run (~0.5 s, deterministic).
 # Once data/app.log exists this branch is dead — a single stat() call —
 # so reruns and code edits during the workshop don't regenerate it.
-LOG_FIXTURE = Path(__file__).parent / "data" / "app.log"
+LOG_FIXTURE = DATA / "app.log"
 if not LOG_FIXTURE.exists():
     with st.spinner("First run — generating `data/app.log` fixture…"):
         try:
@@ -25,7 +24,7 @@ if not LOG_FIXTURE.exists():
         except Exception as exc:  # disk full, permissions, etc.
             st.error(
                 f"Couldn't generate `data/app.log` automatically (`{exc}`).\n\n"
-                "Run it yourself, then reload:\n```\npython data/generate_log.py\n```"
+                "Run the log generator from Troubleshooting in the workshop README, then reload."
             )
             st.stop()
 
@@ -35,7 +34,6 @@ def investigation():
     with st.expander("Incident overview"):
         alert_banner()
 
-        DATA = Path(__file__).parent / "data"
         metrics = json.loads((DATA / "metrics.json").read_text())
         p99 = metrics["checkout"]["p99_latency_ms"]
         peak, base = max(d["value"] for d in p99), p99[0]["value"]
