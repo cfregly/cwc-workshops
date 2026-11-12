@@ -21,7 +21,7 @@ and deploys, correlate the timestamps, and inspect the candidate diff.
 
 ## Setup
 
-For the live lab, you need Python **3.10.20** and an Anthropic API key from Claude Console or your instructor. The commands below install that Python version. Clone from a fresh parent folder to avoid reusing an older checkout. If Git is unavailable, extract the source ZIP into a fresh folder and open `ship-your-first-managed-agent`. [API keys](https://platform.claude.com/settings/keys) · [Workshop source ZIP](https://github.com/cfregly/cwc-workshops/archive/refs/heads/gagan-sre-workshop.zip)
+For the live lab, you need **Python 3** and an Anthropic API key from Claude Console or your instructor. The setup below uses uv to create the workshop environment with **Python 3.10.20**, the tested version pinned for this lab. Clone from a fresh parent folder to avoid reusing an older checkout. If Git is unavailable, extract the source ZIP into a fresh folder and open `ship-your-first-managed-agent`. [API keys](https://platform.claude.com/settings/keys) · [Workshop source ZIP](https://github.com/cfregly/cwc-workshops/archive/refs/heads/gagan-sre-workshop.zip)
 
 ```bash
 git clone --branch gagan-sre-workshop --single-branch https://github.com/cfregly/cwc-workshops.git cwc-workshops/
