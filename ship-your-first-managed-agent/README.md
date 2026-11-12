@@ -21,7 +21,7 @@ and deploys, correlate the timestamps, and inspect the candidate diff.
 
 ## Setup
 
-For the live lab, you need **Python 3** and an Anthropic API key from Claude Console or your instructor. The setup below uses uv to create the workshop environment with **Python 3.10.20**, the tested version pinned for this lab. Clone from a fresh parent folder to avoid reusing an older checkout. If Git is unavailable, extract the source ZIP into a fresh folder and open `ship-your-first-managed-agent`. [API keys](https://platform.claude.com/settings/keys) · [Workshop source ZIP](https://github.com/cfregly/cwc-workshops/archive/refs/heads/gagan-sre-workshop.zip)
+For the live lab, you need **Python 3** and an Anthropic API key from Claude Console or your instructor. The setup below uses uv to create the workshop environment with **Python 3.10.20**, the tested version pinned for this lab. Clone from a fresh parent folder to avoid reusing an older checkout. If Git is unavailable, extract the source ZIP into a fresh folder and open `ship-your-first-managed-agent`. [API keys](https://platform.claude.com/settings/keys) · [Workshop source ZIP](https://github.com/cfregly/cwc-workshops/archive/refs/tags/gagan-sre-workshop-2026-11-12.zip)
 
 ```bash
 git clone --branch gagan-sre-workshop --single-branch https://github.com/cfregly/cwc-workshops.git cwc-workshops/
@@ -194,9 +194,9 @@ Compare checkout metrics and recent deploys, inspect the candidate diff, and
 confirm a clue in the log. Write your suspect, one checked fixture fact, and
 one uncertainty before sharing your answer.
 
-Each tool card shows its full call event ID. Use **Copy ID** for event IDs and **Copy Contents** for tool inputs and outputs. Expand **Input and result** to see formatted JSON or text and the result's own ID. The same cards appear when you reopen a session from the picker.
+Each tool card shows where the call ran (**Local** or **Sandbox**) and its full event ID. Expand **Input and result** to see the formatted payloads, the result's event ID, and its reference back to the call. Match `custom_tool_use_id` for a local result or `tool_use_id` for a sandbox result to the call's `id`. Use **Copy ID** for event IDs and **Copy Contents** for payloads. The same cards appear when you reopen a session from the picker.
 
-Use **Console** next to the picker to open the selected session. The agent and environment have their own **Console** buttons beside their IDs. On a tool card, **Console** beside **Copy ID** opens that exact call. In **Inspector → Events**, match a local call's ID to the result's `custom_tool_use_id`. Sign in with your own Console account and use a session workspace where you have Developer or Admin access. You can also trace the exchange in Streamlit from the same card. [Console Sessions](https://platform.claude.com/sessions) · [Inspect a session](https://platform.claude.com/docs/en/managed-agents/session-observability#inspect-a-session-in-the-console)
+The **Console** button next to the picker opens the selected session. The agent, environment, uploaded log, and Runbook Skill each have a **Console** button beside the ID for resource details. On a tool card, the buttons beside the call and result IDs open those events in **Inspector → Events**. Sign in with your own Console account and use a session workspace where you have Developer or Admin access. [Console Sessions](https://platform.claude.com/sessions) · [Inspect a session](https://platform.claude.com/docs/en/managed-agents/session-observability#inspect-a-session-in-the-console)
 
 ## What this teaches
 
@@ -228,7 +228,7 @@ With your workshop key set, run the checker with neither flag for local diagnost
 
 Add `--check-access` to that command to test read access with your issued key without launching the dashboard. The checker sends a single list request to the first-party Claude API. This can catch a 401 or 403 before you create resources. A pass confirms read access, while model access and resource creation have their own checks. Use the dashboard or Console for live session state and tool results.
 
-- **Missing files or no Git.** Open the workshop subfolder in a fresh clone or the [workshop ZIP](https://github.com/cfregly/cwc-workshops/archive/refs/heads/gagan-sre-workshop.zip). Keep your existing edits and run the checker from the folder containing `app.py`.
+- **Missing files or no Git.** Open the workshop subfolder in a fresh clone or the [workshop ZIP](https://github.com/cfregly/cwc-workshops/archive/refs/tags/gagan-sre-workshop-2026-11-12.zip). Keep your existing edits and run the checker from the folder containing `app.py`.
 - **Missing venv, wrong Python, or import failure.** Return to [Create the virtual environment](#create-the-virtual-environment) and use Python 3.10.20. If an older uv reports that the interpreter is unavailable, use the versioned installer above. On macOS, use `"$HOME/.local/bin/uv"` in the creation command if your shell still finds the older uv. On Windows, reopen PowerShell after installing. If pip reports a wheel, index or network error, share that first error.
 - **Missing or incomplete log.** The launch command generates a missing log. If the dashboard is already open or the checker reports an incomplete log, run `.venv/bin/python data/generate_log.py` or, in PowerShell, `& .\.venv\Scripts\python.exe data/generate_log.py` from the workshop folder. Wait for 69,740 lines, then look for the file ID after upload.
 - **Dashboard fails to open.** Read the terminal error and use the local URL Streamlit prints. If a previous copy is still running, use its printed URL or close only your own idle process before restarting.
@@ -255,7 +255,7 @@ Add `--check-access` to that command to test read access with your issued key wi
    If a dashboard is running, finish its active turn and record the resource IDs before restarting it with that interpreter. Keep the workshop's `display_title` argument.
 
 2. **The dashboard shows a session ID and no answer.** Clicking **+** creates a session and begins sandbox provisioning. Finish and save the last three functions in [What you build](#what-you-build), then send your message once from **Investigation**. The `user.message` event starts a model turn. If you already sent it, inspect that same session's status and events before sending again. Keep Streamlit running on **Investigation** while its local handler is needed.
-3. **A tool result is missing after reopening.** Record the full session ID and let the turn finish so the local worker can return pending results. Refresh the browser and reselect that exact session in the picker. Match the card's call ID to the result reference. If the result is still missing, use **Console** beside the picker to inspect the same session. If the link does not open it, select the key's workspace in [Console Sessions](https://platform.claude.com/sessions) and find the full session ID shown below the dashboard picker. If you lack Console access, ask the instructor for a labeled practice trace.
+3. **A tool result is missing after reopening.** Record the full session ID and let the turn finish so the local worker can return pending results. Refresh the browser and reselect that exact session in the picker. **+** creates a new session. Match the card's call ID to the result reference. If the result is still missing, use **Console** beside the picker to inspect the same session. If the link does not open it, select the key's workspace in [Console Sessions](https://platform.claude.com/sessions) and find the full session ID shown below the dashboard picker. If access is blocked, [check a fixture or ask to see a saved instructor session](#check-a-fixture-while-access-is-blocked).
 
 ### API access, a quiet stream, or cleanup
 
@@ -264,11 +264,11 @@ Add `--check-access` to that command to test read access with your issued key wi
 - **403 or 404.** A 403 means the request lacks permission for that resource. With a 404, check that the ID exists and is visible in the intended workspace. Ask the workspace owner to check access using the operation, status and request ID. [Check a fixture while access is blocked](#check-a-fixture-while-access-is-blocked). [Claude API errors](https://platform.claude.com/docs/en/api/errors)
 - **Upload is slow, or API returns 429 or a server error.** Let a progressing upload finish. If the API reports an error, keep the resource IDs and request ID. Follow any retry instruction in the response. The SDK makes one attempt per request. After a failed or interrupted create, check whether the resource already exists. If the dashboard paused a setup step, use **Retry after checking existing resources** once you've reconciled the prior attempt.
 - **A paused session, missing tool result, or disconnect.** Let an active turn finish before sending again or deleting the session. When the dashboard reports a pending turn or tool reply, it disables those controls. Open the same session and find the last event. Match `agent.custom_tool_use.id` to `user.custom_tool_result.custom_tool_use_id`. A match confirms the reply reached the service. The dashboard marks results missing from its stream and displays reported pause or stop reasons. Reopening history does not resume a pending handler. If the worker is gone, capture the ID and ask the instructor to help reconcile the session before starting a replacement. [Session events](https://platform.claude.com/docs/en/managed-agents/events-and-streaming)
-- **Delete is blocked or the run is still active.** Save `delete_session()`, verify the full ID and finished state of your own session, and click delete once. Keep active or ambiguous sessions for follow-up with the instructor. Record file, skill, environment and agent IDs for separate workspace cleanup. `e2e.py` creates another set of resources and is unsuitable as a recovery command. [Session deletion](https://platform.claude.com/docs/en/managed-agents/session-operations#deleting-a-session)
+- **Delete is blocked or the run is still active.** Save `delete_session()`, verify the full ID and finished state of your own session, and click delete once. Keep active or ambiguous sessions for follow-up with the instructor. Record the file, Skill, environment, and agent IDs for [optional workspace cleanup](#optional-workspace-cleanup). `e2e.py` creates another set of resources and is unsuitable as a recovery command. [Session deletion](https://platform.claude.com/docs/en/managed-agents/session-operations#deleting-a-session)
 
 ### Check a fixture while access is blocked
 
-Open [`data/metrics.json`](data/metrics.json) and find the largest `value` under `checkout.p99_latency_ms`. Note its UTC timestamp. If you already installed the workshop packages, you can open the standalone Metrics page from the workshop folder. It reads the fixture directly and needs no API key.
+Open [`data/metrics.json`](data/metrics.json) in your browser or editor and find the largest `value` under `checkout.p99_latency_ms`. Note its UTC timestamp. If you already installed the workshop packages, you can open the standalone Metrics page from the workshop folder. It reads the fixture directly and needs no API key.
 
 **macOS or Linux**
 
@@ -282,7 +282,54 @@ Open [`data/metrics.json`](data/metrics.json) and find the largest `value` under
 & .\.venv\Scripts\python.exe -m streamlit run pages/1_Metrics.py --server.address 127.0.0.1 --server.headless true --browser.gatherUsageStats false
 ```
 
-Open the URL Streamlit prints and look below the latency chart for the checkout p99 peak and its UTC time. Report what you verified and which hosted step you still need to complete. You can practice matching a request and result with the instructor's trace.
+If you launched Metrics, open the URL Streamlit prints. The checkout p99 peak and its UTC time appear below the latency chart. Compare the checkout deploy time in [`data/deploys.json`](data/deploys.json) with when checkout latency starts to rise. If your instructor shows a saved session in Claude Console, match one tool call to its result in **Inspector → Events**. Report what you verified and which hosted step you still need to complete.
+
+## Optional workspace cleanup
+
+Record the full session, agent, environment, uploaded `app.log` file, and
+custom Runbook Skill IDs in **Investigation** as you create them. When your
+turns finish, use the same API key and workspace as setup. Check that you
+created each resource and that nobody else is using it. If ownership or
+turn state is unclear, keep the IDs and ask your instructor.
+
+Delete each finished session you own with the dashboard's trash button. The
+SDK call is `client.beta.sessions.delete(session_id)`. Then stop Streamlit
+with **Ctrl+C**.
+
+From the workshop folder, open Python with `.venv/bin/python` on macOS or
+Linux, or `& .\.venv\Scripts\python.exe` in PowerShell. Use the key from your
+workshop shell or `.env`.
+
+```python
+from anthropic import Anthropic
+from dotenv import load_dotenv
+
+load_dotenv(".env")
+client = Anthropic(base_url="https://api.anthropic.com", max_retries=0)
+```
+
+Set `agent_id`, `environment_id`, `file_id`, and `skill_id` to the exact IDs
+you recorded, as strings. Agent archiving is permanent. Run these calls in
+order and check each response.
+
+```python
+client.beta.agents.archive(agent_id)
+client.beta.environments.delete(environment_id)
+client.beta.files.delete(file_id)
+```
+
+With the workshop's Anthropic SDK 1.0.0, list all versions of your custom
+Skill first, delete each version including the last one, then delete the
+Skill itself. Keep the Skill ID until the final call succeeds. If a call
+fails, check the resource's state before retrying. [Skills API migration guide](https://platform.claude.com/docs/en/build-with-claude/skills-guide#migrate-from-skills-2025-10-02)
+
+```python
+versions = list(client.beta.skills.versions.list(skill_id=skill_id))
+for version in versions:
+    client.beta.skills.versions.delete(version.version, skill_id=skill_id)
+
+client.beta.skills.delete(skill_id)
+```
 
 ## Maintaining the setup
 

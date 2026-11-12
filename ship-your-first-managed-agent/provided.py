@@ -79,10 +79,15 @@ def _tool_key(event: _ToolRequest | _ToolResult) -> _ToolKey:
     return event.type, event.id
 
 
-def _console_url(collection: str, resource_id: str, workspace: str | None) -> str:
+def _console_url(
+    collection: str, resource_id: str, workspace: str | None, *, query_param: str | None = None,
+) -> str:
     workspace_path = quote(workspace or "default", safe="")
-    resource_path = quote(resource_id, safe="")
-    return f"https://platform.claude.com/workspaces/{workspace_path}/{collection}/{resource_path}"
+    encoded_id = quote(resource_id, safe="")
+    collection_url = f"https://platform.claude.com/workspaces/{workspace_path}/{collection}"
+    if query_param:
+        return f"{collection_url}?{query_param}={encoded_id}"
+    return f"{collection_url}/{encoded_id}"
 
 
 def _console_button(url: str, resource: str):
@@ -184,13 +189,13 @@ def _resource_id(label: str, resource_id: str, resource: str, url: str):
         _console_button(url, resource)
 
 
-def _event_id(label: str, event_id: str, *, console_url: str | None = None):
+def _event_id(label: str, event_id: str, session_url: str, *, resource: str):
+    console_url = f"{session_url}?event={quote(event_id, safe='')}&inspector=events"
     with st.container(key=f"tool-event-id-{event_id}", gap=None):
         st.caption(label)
         with st.container(horizontal=True, wrap=False, gap="xsmall"):
             st.code(event_id, language=None, wrap_lines=True)
-            if console_url:
-                _console_button(console_url, "this call")
+            _console_button(console_url, resource)
 
 
 def _payload(value: object, *, text: bool = False):
@@ -223,9 +228,9 @@ def _render_tool_heading(heading: DeltaGenerator, call: _ToolCall, *, waiting: b
     )
 
 
-def _render_tool_result(result: _ToolResult):
+def _render_tool_result(result: _ToolResult, session_url: str):
     st.markdown("**Result**")
-    _event_id("Result event ID", result.id)
+    _event_id("Result event ID", result.id, session_url, resource="this result")
     if not result.content:
         st.caption("Empty result")
     for block in result.content or ():
@@ -233,8 +238,11 @@ def _render_tool_result(result: _ToolResult):
             _payload(block.text, text=True)
         else:
             _payload(block.model_dump(mode="json", exclude_none=True))
-    reference = "custom_tool_use_id" if result.type == "user.custom_tool_result" else "tool_use_id"
-    st.caption(f"The result’s `{reference}` matches the call event ID.")
+    if result.type == "user.custom_tool_result":
+        reference, call_id = "custom_tool_use_id", result.custom_tool_use_id
+    else:
+        reference, call_id = "tool_use_id", result.tool_use_id
+    st.caption(f"The result’s `{reference}` points to call event `{call_id}`.")
 
 
 def _render_tool_call(
@@ -244,15 +252,14 @@ def _render_tool_call(
     with st.container(border=True, key=f"tool-card-{request.id}", gap="xsmall"):
         heading = st.empty()
         _render_tool_heading(heading, call, waiting=waiting)
-        event_id = quote(request.id, safe="")
-        _event_id("Call event ID", request.id, console_url=f"{session_url}?event={event_id}")
+        _event_id("Call event ID", request.id, session_url, resource="this call")
         with st.expander("Input and result", key=f"tool-details-{request.id}"):
             st.markdown("**Input**")
             _payload(request.input)
             result_area = st.container(gap="xsmall")
             with result_area:
                 for result in call.results.values():
-                    _render_tool_result(result)
+                    _render_tool_result(result, session_url)
     return heading, result_area
 
 
@@ -423,8 +430,9 @@ def _chat_panel():
     skills, agent_workspace = _agent_details(agent_id)
     _resource_id("agent", agent_id, "this agent",
                  _console_url("agents", agent_id, agent_workspace))
-    for sk in skills:
-        st.caption(f"skill · `{sk}`")
+    for skill_id in skills:
+        _resource_id("skill", skill_id, "this skill",
+                     _console_url("skills", skill_id, agent_workspace, query_param="skill"))
 
     env_id = _setup_resource("setup_environment", agent.setup_environment)
     if env_id is None:
@@ -435,7 +443,8 @@ def _chat_panel():
     log_id = _setup_resource("upload_log", agent.upload_log)
     if log_id is None:
         return
-    st.caption(f"log file · `{log_id}`")
+    _resource_id("log file", log_id, "this log file",
+                 _console_url("files", log_id, agent_workspace, query_param="file"))
 
     # ── session picker: sessions are stateful + persisted server-side.
     # Never auto-create — resume the newest existing one, or show an empty state.
@@ -590,7 +599,7 @@ def _chat_panel():
                                 call, heading, result_area = tool_cards[key]
                                 _render_tool_heading(heading, call)
                                 with result_area:
-                                    _render_tool_result(ev)
+                                    _render_tool_result(ev, session_url)
                         elif ev.type == "span.model_request_start":
                             flush_text()
                         elif ev.type == "session.status_idle":
