@@ -8,6 +8,7 @@ edit this file — agent.py imports from it.
 import json
 from collections import defaultdict
 from dataclasses import dataclass
+from functools import cache
 from html import escape
 from pathlib import Path
 import re
@@ -83,11 +84,84 @@ def _console_url(collection: str, resource_id: str, workspace: str | None) -> st
     return f"https://platform.claude.com/workspaces/{workspace_path}/{collection}/{resource_path}"
 
 
-def _console_button(url: str, resource: str, *, primary: bool = False):
+def _console_button(url: str, resource: str):
     st.link_button(
         "Console", url, help=f"Open {resource} in Claude Console",
-        type="primary" if primary else "secondary",
         icon=":material/open_in_new:", icon_position="right",
+    )
+
+
+# The picker changes in the browser before Streamlit finishes its rerun.
+# Keep the picker and link together so a fast click cannot use the old URL.
+@cache
+def _session_console_component():
+    return st.components.v2.component(
+        "workshop_session_console",
+        html="""
+            <div class="session-controls">
+                <select aria-label="session"></select>
+                <a role="link" aria-disabled="true" tabindex="-1" target="_blank"
+                   rel="noopener noreferrer" title="Open the selected session in Claude Console">
+                    Console <span aria-hidden="true">↗</span>
+                </a>
+            </div>
+        """,
+        css="""
+            .session-controls { display: flex; align-items: center; gap: 0.75rem; }
+            select, a {
+                border: 1px solid transparent; border-radius: 0.5rem;
+                font: inherit; min-height: 2.5rem; padding: 0.4rem 0.65rem;
+            }
+            select {
+                flex: 1; min-width: 0; color-scheme: dark;
+                background: var(--st-secondary-background-color);
+                color: var(--st-text-color);
+            }
+            a {
+                display: inline-flex; align-items: center; gap: 0.35rem;
+                background: var(--st-primary-color); color: #0b0e14;
+                text-decoration: none; white-space: nowrap;
+            }
+            a[aria-disabled="true"] { opacity: 0.45; cursor: default; }
+            select:focus-visible, a:focus-visible {
+                outline: 2px solid var(--st-primary-color); outline-offset: 2px;
+            }
+        """,
+        js="""
+            export default function ({ parentElement, data, setTriggerValue }) {
+                const picker = parentElement.querySelector("select");
+                const link = parentElement.querySelector("a");
+                const { options, confirmed, url } = data;
+
+                function syncLink() {
+                    const ready = Boolean(url && picker.value === confirmed);
+                    if (ready) {
+                        link.href = url;
+                    } else {
+                        link.removeAttribute("href");
+                    }
+                    link.setAttribute("aria-disabled", String(!ready));
+                    link.tabIndex = ready ? 0 : -1;
+                }
+
+                const placeholder = new Option("Select a session", "");
+                placeholder.disabled = true;
+                picker.replaceChildren(placeholder, ...options.map(([id, label]) => new Option(label, id)));
+                const pending = picker.dataset.pending;
+                if (pending === confirmed || !options.some(([id]) => id === pending)) {
+                    delete picker.dataset.pending;
+                }
+                picker.value = picker.dataset.pending || confirmed || "";
+                picker.disabled = options.length === 0;
+                syncLink();
+
+                picker.onchange = () => {
+                    picker.dataset.pending = picker.value;
+                    syncLink();
+                    setTriggerValue("selected", picker.value);
+                };
+            }
+        """,
     )
 
 
@@ -337,6 +411,7 @@ def _chat_panel():
     sid = st.session_state.get("sid")
     status = None
     paused = None
+    missing_sid = None
     workspace = agent_workspace
     if sid:
         try:
@@ -348,6 +423,7 @@ def _chat_panel():
             if status == "idle":
                 paused = _paused_reason(agent.client, sid)
         except anthropic.NotFoundError:
+            missing_sid = sid
             _list_sessions.clear()
             st.session_state.sid = None
             st.session_state.chat_history = []
@@ -355,31 +431,22 @@ def _chat_panel():
             sid = None
 
     listed = _list_sessions(agent_id)
-    labels = {s: l for s, l, _ in listed}
-    ids = [s for s, _, _ in listed]
+    labels = {session_id: label for session_id, label, _ in listed if session_id != missing_sid}
     if sid and sid not in labels:
-        ids.insert(0, sid)
-        labels[sid] = "just now · current"
+        labels = {sid: "just now · current", **labels}
 
     def _on_pick():
-        chosen = st.session_state.session_picker
-        st.session_state.sid = chosen
-        st.session_state.pop("chat_history", None)
-
-    if sid:
-        st.session_state.session_picker = sid
-    else:
-        st.session_state.pop("session_picker", None)
+        chosen = st.session_state.workshop_session_console.selected
+        if chosen in labels and chosen != st.session_state.get("sid"):
+            st.session_state.sid = chosen
+            st.session_state.pop("chat_history", None)
 
     session_url = _console_url("sessions", sid, workspace) if sid else None
     with st.container(horizontal=True, vertical_alignment="center"):
-        st.selectbox(
-            "session", ids, index=None if sid is None else 0, format_func=lambda v: labels.get(v, v),
-            disabled=not ids, label_visibility="collapsed", key="session_picker", on_change=_on_pick,
-            width=300,
+        _session_console_component()(
+            key="workshop_session_console", on_selected_change=_on_pick, width=410,
+            data={"options": list(labels.items()), "confirmed": sid, "url": session_url},
         )
-        if session_url:
-            _console_button(session_url, "the selected session", primary=True)
         new_session = st.button("", icon=":material/add:", help="new session")
         delete_session = st.button(
             "", icon=":material/delete:", help="delete session",
@@ -407,7 +474,7 @@ def _chat_panel():
             st.rerun()
 
     if not session_url:
-        st.caption("Select an existing session or click **+** to start one." if ids
+        st.caption("Select an existing session or click **+** to start one." if labels
                    else "no sessions — click **+** to start one")
         st.chat_input("ask…", disabled=True, key="off_nosession")
         return
