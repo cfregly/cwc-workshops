@@ -103,7 +103,8 @@ def _session_console_component():
                 <select aria-label="session"></select>
                 <a role="link" aria-disabled="true" tabindex="-1" target="_blank"
                    rel="noopener noreferrer" title="Open the selected session in Claude Console">
-                    Console <span class="external-icon" aria-hidden="true" translate="no">open_in_new</span>
+                    <span class="console-label">Console</span>
+                    <span class="external-icon" aria-hidden="true" translate="no">open_in_new</span>
                 </a>
             </div>
         """,
@@ -129,6 +130,7 @@ def _session_console_component():
                 text-decoration: none; white-space: nowrap;
             }
             a[href]:hover { background: var(--st-secondary-background-color); }
+            .console-label { font-size: 0.875rem; line-height: 1.6; }
             .external-icon {
                 font-family: "Material Symbols Rounded";
                 font-size: 1rem; line-height: 1; font-feature-settings: "liga";
