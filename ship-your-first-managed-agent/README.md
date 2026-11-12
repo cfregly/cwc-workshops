@@ -21,7 +21,7 @@ and deploys, correlate the timestamps, and inspect the candidate diff.
 
 ## Setup
 
-You need Python **3.10.20** and an Anthropic API key from Claude Console or your instructor. The commands below install that Python version. Clone from a fresh parent folder to avoid reusing an older checkout. If Git is unavailable, extract the source ZIP into a fresh folder and open `ship-your-first-managed-agent`. [API keys](https://platform.claude.com/settings/keys) · [Workshop source ZIP](https://github.com/cfregly/cwc-workshops/archive/refs/heads/gagan-sre-workshop.zip)
+For the live lab, you need Python **3.10.20** and an Anthropic API key from Claude Console or your instructor. The commands below install that Python version. Clone from a fresh parent folder to avoid reusing an older checkout. If Git is unavailable, extract the source ZIP into a fresh folder and open `ship-your-first-managed-agent`. [API keys](https://platform.claude.com/settings/keys) · [Workshop source ZIP](https://github.com/cfregly/cwc-workshops/archive/refs/heads/gagan-sre-workshop.zip)
 
 ```bash
 git clone --branch gagan-sre-workshop --single-branch https://github.com/cfregly/cwc-workshops.git cwc-workshops/
@@ -157,14 +157,14 @@ Run the checker with the venv Python. It checks the pinned Python and packages, 
 & .\.venv\Scripts\python.exe check_setup.py --check-access --launch
 ```
 
-Open the **URL** Streamlit prints. The Investigation page says the SRE Agent is offline and asks you to implement `setup_agent()` in `agent.py`. Expand **Diagnostics** to see the workshop folder, Python executable, and Anthropic SDK version used by the dashboard. If your key is still being issued, read the local fixtures while the access owner helps. For an error, open [Troubleshooting](#troubleshooting).
+Open the **URL** Streamlit prints. The Investigation page says the SRE Agent is offline and asks you to implement `setup_agent()` in `agent.py`. Expand **Diagnostics** to see the workshop folder, Python executable, and Anthropic SDK version used by the dashboard. If you are waiting for a key or the access check fails, [check a fixture while access is blocked](#check-a-fixture-while-access-is-blocked). For other errors, open [Troubleshooting](#troubleshooting).
 
 ## What you build
 
 Open **`agent.py`**. Seven functions, each starting with `raise NotImplementedError`.
 Fill them in and the panel comes online one step at a time. Turn off Auto Save
 in this workspace. Keep the supplied imports, signatures, and decorators.
-Save each completed function once and wait for the next dashboard checkpoint.
+Save each completed function once. The dashboard shows the resource IDs as you finish steps 1 through 3.
 
 | # | Function | API call | What to implement and check |
 |---|---|---|---|
@@ -180,7 +180,7 @@ The system prompt, tool schemas, runbook skill, chat UI, and session picker are 
 Stuck? `agent_complete.py` has the finished versions. Compare just the function
 you're working on. [Starter](agent.py) · [Reference](agent_complete.py)
 
-Session creation begins sandbox provisioning. The dashboard shows **Session created. Send a message to start a turn.** After adding the stream and local handler, send `hey`. Wait for **Turn finished.** Then ask **“What caused the latency spike?”**
+Session creation begins sandbox provisioning. The dashboard shows **Session created. Send a message to start a turn.** Finish and save `stream_reply()`, `handle_tool()`, and `delete_session()` before sending your first message. Send `hey` and wait for **Turn finished.** Then ask **“What caused the latency spike?”** and wait for **Turn finished.** again. Stay on **Investigation** and leave the code unchanged while a turn is running.
 
 ## The incident
 
@@ -212,7 +212,7 @@ Keep your own folder and Streamlit process. Tell your instructor the **last step
 
 ### Start with the local setup
 
-Run the checker with neither flag for local diagnostics. It reports issues without showing the key or file contents. Follow its first fix or unfinished function cue, then verify the result in the dashboard.
+With your workshop key set, run the checker with neither flag for local diagnostics. It reports issues without making an API request or showing the key or file contents. Follow its first fix or unfinished function cue, then verify the result in the dashboard.
 
 **macOS or Linux**
 
@@ -254,19 +254,35 @@ Add `--check-access` to that command to test read access with your issued key wi
 
    If a dashboard is running, finish its active turn and record the resource IDs before restarting it with that interpreter. Keep the workshop's `display_title` argument.
 
-2. **The dashboard shows a session ID and no answer.** Clicking **+** creates a session and begins sandbox provisioning. Finish and save both `stream_reply()` and `handle_tool()`, then send your message once from the dashboard. The `user.message` event starts a model turn. If you already sent it, inspect that same session's status and events before sending again. Keep Streamlit running while its local handler is needed.
+2. **The dashboard shows a session ID and no answer.** Clicking **+** creates a session and begins sandbox provisioning. Finish and save the last three functions in [What you build](#what-you-build), then send your message once from **Investigation**. The `user.message` event starts a model turn. If you already sent it, inspect that same session's status and events before sending again. Keep Streamlit running on **Investigation** while its local handler is needed.
 3. **A tool result is missing after reopening.** Record the full session ID and let the turn finish so the local worker can return pending results. Refresh the browser and reselect that exact session in the picker. Match the card's call ID to the result reference. If the result is still missing, use **Console** beside the picker to inspect the same session. If the link does not open it, select the key's workspace in [Console Sessions](https://platform.claude.com/sessions) and find the full session ID shown below the dashboard picker. If you lack Console access, ask the instructor for a labeled practice trace.
 
 ### API access, a quiet stream, or cleanup
 
 - **Missing key or 401.** Set the intended key privately. An exported value can override `.env`, even if that value is blank. Clear a stale value with `unset ANTHROPIC_API_KEY` on macOS or Linux or `Remove-Item Env:ANTHROPIC_API_KEY` in PowerShell. Restart your Streamlit process after correcting it. If resource creation already started, record the IDs first.
 - **Read access passes, but creating the agent reports insufficient credits.** Listing environments confirms Managed Agents read access. Creation and model use have separate billing checks. Record the request ID, time, and Runbook Skill ID if shown. Ask the instructor to reconcile the upload and confirm the workshop workspace has API credits before retrying. After correcting the key or workspace, restart Streamlit using the launch command above.
-- **403 or 404.** A 403 means the request lacks permission for that resource. With a 404, check that the ID exists and is visible in the intended workspace. Ask the workspace owner to check access using the operation, status and request ID. Use the local fixtures while access is checked. [Claude API errors](https://platform.claude.com/docs/en/api/errors)
+- **403 or 404.** A 403 means the request lacks permission for that resource. With a 404, check that the ID exists and is visible in the intended workspace. Ask the workspace owner to check access using the operation, status and request ID. [Check a fixture while access is blocked](#check-a-fixture-while-access-is-blocked). [Claude API errors](https://platform.claude.com/docs/en/api/errors)
 - **Upload is slow, or API returns 429 or a server error.** Let a progressing upload finish. If the API reports an error, keep the resource IDs and request ID. Follow any retry instruction in the response. The SDK makes one attempt per request. After a failed or interrupted create, check whether the resource already exists. If the dashboard paused a setup step, use **Retry after checking existing resources** once you've reconciled the prior attempt.
 - **A paused session, missing tool result, or disconnect.** Let an active turn finish before sending again or deleting the session. When the dashboard reports a pending turn or tool reply, it disables those controls. Open the same session and find the last event. Match `agent.custom_tool_use.id` to `user.custom_tool_result.custom_tool_use_id`. A match confirms the reply reached the service. The dashboard marks results missing from its stream and displays reported pause or stop reasons. Reopening history does not resume a pending handler. If the worker is gone, capture the ID and ask the instructor to help reconcile the session before starting a replacement. [Session events](https://platform.claude.com/docs/en/managed-agents/events-and-streaming)
 - **Delete is blocked or the run is still active.** Save `delete_session()`, verify the full ID and finished state of your own session, and click delete once. Keep active or ambiguous sessions for follow-up with the instructor. Record file, skill, environment and agent IDs for separate workspace cleanup. `e2e.py` creates another set of resources and is unsuitable as a recovery command. [Session deletion](https://platform.claude.com/docs/en/managed-agents/session-operations#deleting-a-session)
 
-If a hosted step is blocked, check one fixture fact locally. The Metrics page shows the checkout p99 peak and its UTC time below the latency chart. Practice matching a request and result with the instructor's trace. Report what you verified and which hosted step you still need to complete.
+### Check a fixture while access is blocked
+
+Open [`data/metrics.json`](data/metrics.json) and find the largest `value` under `checkout.p99_latency_ms`. Note its UTC timestamp. If you already installed the workshop packages, you can open the standalone Metrics page from the workshop folder. It reads the fixture directly and needs no API key.
+
+**macOS or Linux**
+
+```bash
+.venv/bin/python -m streamlit run pages/1_Metrics.py --server.address 127.0.0.1 --server.headless true --browser.gatherUsageStats false
+```
+
+**Windows PowerShell**
+
+```powershell
+& .\.venv\Scripts\python.exe -m streamlit run pages/1_Metrics.py --server.address 127.0.0.1 --server.headless true --browser.gatherUsageStats false
+```
+
+Open the URL Streamlit prints and look below the latency chart for the checkout p99 peak and its UTC time. Report what you verified and which hosted step you still need to complete. You can practice matching a request and result with the instructor's trace.
 
 ## Maintaining the setup
 
