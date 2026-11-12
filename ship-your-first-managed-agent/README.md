@@ -143,7 +143,7 @@ Open `.env` privately and set `ANTHROPIC_API_KEY` to the intended key. If your s
 
 ### Check setup and start the dashboard
 
-Run the checker with the venv Python. It checks the pinned Python and packages, verifies that the SDK accepts `display_title`, and flags edited setup functions that omit a resource ID return. The command below also generates and validates a missing synthetic log, checks Managed Agents read access, and opens the dashboard. Keep the key off screen.
+Run the checker with the venv Python. It checks the pinned Python and packages, verifies that the SDK accepts `display_title`, and flags edited resource functions with no value return. Verify the resource IDs in the dashboard. The command below also generates and validates a missing synthetic log, checks Managed Agents read access, and opens the dashboard. Keep the key off screen.
 
 **macOS or Linux**
 
