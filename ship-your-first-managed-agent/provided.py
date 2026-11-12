@@ -103,7 +103,7 @@ def _session_console_component():
                 <select aria-label="session"></select>
                 <a role="link" aria-disabled="true" tabindex="-1" target="_blank"
                    rel="noopener noreferrer" title="Open the selected session in Claude Console">
-                    Console <span aria-hidden="true">↗</span>
+                    Console <span class="external-icon" aria-hidden="true" translate="no">open_in_new</span>
                 </a>
             </div>
         """,
@@ -119,9 +119,19 @@ def _session_console_component():
                 color: var(--st-text-color);
             }
             a {
-                display: inline-flex; align-items: center; gap: 0.35rem;
-                background: var(--st-primary-color); color: #0b0e14;
+                box-sizing: border-box; display: inline-flex; align-items: center;
+                justify-content: center; gap: 0.5rem; padding: 0.25rem 0.75rem;
+                border-color: var(--st-border-color);
+                border-radius: var(--st-button-radius, 0.5rem);
+                background: var(--st-secondary-background-color);
+                background: hsl(from var(--st-background-color) h s calc(l + 3));
+                color: var(--st-text-color);
                 text-decoration: none; white-space: nowrap;
+            }
+            a[href]:hover { background: var(--st-secondary-background-color); }
+            .external-icon {
+                font-family: "Material Symbols Rounded";
+                font-size: 1rem; line-height: 1; font-feature-settings: "liga";
             }
             a[aria-disabled="true"] { opacity: 0.45; cursor: default; }
             select:focus-visible, a:focus-visible {
