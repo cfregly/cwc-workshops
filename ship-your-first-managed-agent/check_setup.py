@@ -125,8 +125,13 @@ def check_key(root, check):
             return None
         if binding.key is not None:
             settings[binding.key] = binding.value
-    if any(os.environ.get(name) or settings.get(name) for name in API_OVERRIDES):
-        check(False, "Remove API endpoint, auth token, or custom header overrides from this lab shell and .env.")
+    shell_overrides = [name for name in API_OVERRIDES if os.environ.get(name)]
+    file_overrides = [name for name in API_OVERRIDES if settings.get(name)]
+    if shell_overrides or file_overrides:
+        if shell_overrides:
+            check(False, f"Clear {', '.join(shell_overrides)} from the current shell.")
+        if file_overrides:
+            check(False, f"Remove the lines that set {', '.join(file_overrides)} in .env.")
         return None
     shell_key = os.environ.get("ANTHROPIC_API_KEY")
     file_key = settings.get("ANTHROPIC_API_KEY")

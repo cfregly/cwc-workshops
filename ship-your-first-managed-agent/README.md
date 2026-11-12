@@ -21,7 +21,7 @@ and deploys, correlate the timestamps, and inspect the candidate diff.
 
 ## Setup
 
-For the live lab, you need **Python 3** and an Anthropic API key from Claude Console or your instructor. The setup below uses uv to create the workshop environment with **Python 3.10.20**, the tested version pinned for this lab. Clone from a fresh parent folder to avoid reusing an older checkout. If Git is unavailable, extract the source ZIP into a fresh folder and open `ship-your-first-managed-agent`. [API keys](https://platform.claude.com/settings/keys) · [Workshop source ZIP](https://github.com/cfregly/cwc-workshops/archive/refs/tags/gagan-sre-workshop-2026-11-12.zip)
+For the live lab, you need **Python 3** and an Anthropic API key from Claude Console or your instructor. The setup below uses uv to create the workshop environment with **Python 3.10.20**, the tested version pinned for this lab. Clone from a fresh parent folder to avoid reusing an older checkout. If Git is unavailable, extract the source ZIP into a fresh folder and open `ship-your-first-managed-agent`. [API keys](https://platform.claude.com/settings/keys) · [Workshop source ZIP](https://github.com/cfregly/cwc-workshops/archive/refs/tags/gagan-sre-workshop-2026-11-12-r2.zip)
 
 ```bash
 git clone --branch gagan-sre-workshop --single-branch https://github.com/cfregly/cwc-workshops.git cwc-workshops/
@@ -43,76 +43,64 @@ Run these commands from `ship-your-first-managed-agent`, the folder containing `
 
 **macOS or Linux (zsh or Bash)**
 
-If you need to create `.venv`, run `uv --version`. If uv is missing or reports a version other than `0.13.7`, install the workshop's version and put it first on this terminal's PATH.
-
-```bash
-curl -LsSf https://astral.sh/uv/0.13.7/install.sh | UV_NO_MODIFY_PATH=1 UV_INSTALL_DIR="$HOME/.local/bin" sh
-export PATH="$HOME/.local/bin:$PATH"
-uv --version
-```
-
-If `.venv` already exists, run `.venv/bin/python --version`. Reuse it if it reports `Python 3.10.20` and start at `source` below. To replace a different version, open a fresh terminal in the workshop folder and move the old environment aside.
+If `.venv` already exists, run `.venv/bin/python --version`. If it reports `Python 3.10.20`, reuse it and skip to the package installation below. If the check fails or reports a different version, open a fresh terminal in the workshop folder and move the old environment aside.
 
 ```bash
 mv .venv ".venv-backup-$(date +%Y%m%d-%H%M%S)"
 ```
 
-Create `.venv` and install the pip bundled with this Python build.
+Try your existing uv to create `.venv`.
 
 ```bash
-uv venv --python 3.10.20 --managed-python .venv && .venv/bin/python -m ensurepip
+uv venv --python 3.10.20 --managed-python .venv
 ```
 
-Activate `.venv` and check which Python and pip you are using.
+If uv is missing or cannot obtain Python 3.10.20, install uv 0.13.7 into the workshop's `.workshop-uv` folder and run that binary directly. [Astral's unmanaged installer](https://docs.astral.sh/uv/reference/installer/#unmanaged-installations)
 
 ```bash
-source .venv/bin/activate
-python --version
-command -v python
-python -m pip --version
+curl -LsSf https://astral.sh/uv/0.13.7/install.sh | UV_UNMANAGED_INSTALL="$PWD/.workshop-uv" sh
+./.workshop-uv/uv venv --python 3.10.20 --managed-python .venv
 ```
 
-Expect `Python 3.10.20` and paths inside `.venv`. Then install the locked packages.
+Check that the environment reports `Python 3.10.20`. Then prepare pip and install the locked packages using that interpreter.
 
 ```bash
-python -m pip install --require-hashes -r requirements.lock.txt
+.venv/bin/python --version
+.venv/bin/python -m ensurepip && .venv/bin/python -m pip install --require-hashes -r requirements.lock.txt
 ```
 
-Run `source .venv/bin/activate` in each new terminal. Run `deactivate` to leave the environment.
+If you prefer to activate the environment, run `source .venv/bin/activate` and then use `python`. Run `deactivate` to leave it.
 
 **Windows PowerShell (x64)**
 
-If you need uv, install it, then open a new PowerShell window in the workshop folder. [Astral uv installation](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer)
-
-```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://astral.sh/uv/0.13.7/install.ps1 | iex"
-```
-
-If `.venv` already exists, run `& .\.venv\Scripts\python.exe --version`. Reuse it if it reports `Python 3.10.20` and skip the creation commands below. To replace a different version, open a fresh PowerShell window in the workshop folder and move the old environment aside.
+If `.venv` already exists, run `& .\.venv\Scripts\python.exe --version`. If it reports `Python 3.10.20`, reuse it and skip to the package installation below. If the check fails or reports a different version, open a fresh PowerShell window in the workshop folder and move the old environment aside.
 
 ```powershell
 Rename-Item -LiteralPath .venv -NewName ('.venv-backup-' + (Get-Date -Format yyyyMMdd-HHmmss))
 ```
 
-Create `.venv` and install the pip bundled with this Python build. The `if` runs `ensurepip` after uv succeeds.
+Try your existing uv to create `.venv`.
 
 ```powershell
 uv venv --python 3.10.20 --managed-python .venv
-if ($LASTEXITCODE -eq 0) { & .\.venv\Scripts\python.exe -m ensurepip }
 ```
 
-Use the venv's Python directly. This also works when PowerShell blocks activation scripts.
+If uv is missing or cannot obtain Python 3.10.20, install uv 0.13.7 into the workshop's `.workshop-uv` folder and run that binary directly. [Astral's unmanaged installer](https://docs.astral.sh/uv/reference/installer/#unmanaged-installations)
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command {
+    $env:UV_UNMANAGED_INSTALL = Join-Path $PWD.Path '.workshop-uv'
+    irm https://astral.sh/uv/0.13.7/install.ps1 | iex
+}
+& .\.workshop-uv\uv.exe venv --python 3.10.20 --managed-python .venv
+```
+
+Check that the environment reports `Python 3.10.20`. Then prepare pip and install the locked packages using that interpreter.
 
 ```powershell
 & .\.venv\Scripts\python.exe --version
-& .\.venv\Scripts\python.exe -c "import sys; print(sys.executable)"
-& .\.venv\Scripts\python.exe -m pip --version
-```
-
-Expect `Python 3.10.20` and paths inside `.venv`. Then install the locked packages.
-
-```powershell
-& .\.venv\Scripts\python.exe -m pip install --require-hashes -r requirements.lock.txt
+& .\.venv\Scripts\python.exe -m ensurepip
+if ($LASTEXITCODE -eq 0) { & .\.venv\Scripts\python.exe -m pip install --require-hashes -r requirements.lock.txt }
 ```
 
 If you prefer to activate the environment, run `.\.venv\Scripts\Activate.ps1` and then use `python`. Run `deactivate` to leave it.
@@ -228,8 +216,8 @@ With your workshop key set, run the checker with neither flag for local diagnost
 
 Add `--check-access` to that command to test read access with your issued key without launching the dashboard. The checker sends a single list request to the first-party Claude API. This can catch a 401 or 403 before you create resources. A pass confirms read access, while model access and resource creation have their own checks. Use the dashboard or Console for live session state and tool results.
 
-- **Missing files or no Git.** Open the workshop subfolder in a fresh clone or the [workshop ZIP](https://github.com/cfregly/cwc-workshops/archive/refs/tags/gagan-sre-workshop-2026-11-12.zip). Keep your existing edits and run the checker from the folder containing `app.py`.
-- **Missing venv, wrong Python, or import failure.** Return to [Create the virtual environment](#create-the-virtual-environment) and use Python 3.10.20. If an older uv reports that the interpreter is unavailable, use the versioned installer above. On macOS, use `"$HOME/.local/bin/uv"` in the creation command if your shell still finds the older uv. On Windows, reopen PowerShell after installing. If pip reports a wheel, index or network error, share that first error.
+- **Missing files or no Git.** Open the workshop subfolder in a fresh clone or the [workshop ZIP](https://github.com/cfregly/cwc-workshops/archive/refs/tags/gagan-sre-workshop-2026-11-12-r2.zip). Keep your existing edits and run the checker from the folder containing `app.py`.
+- **Missing venv, wrong Python, or import failure.** Return to [Create the virtual environment](#create-the-virtual-environment) and use Python 3.10.20. If your existing uv is missing or cannot obtain that Python version, follow the `.workshop-uv` fallback for your platform. If the fallback or pip fails, share the first error.
 - **Missing or incomplete log.** The launch command generates a missing log. If the dashboard is already open or the checker reports an incomplete log, run `.venv/bin/python data/generate_log.py` or, in PowerShell, `& .\.venv\Scripts\python.exe data/generate_log.py` from the workshop folder. Wait for 69,740 lines, then look for the file ID after upload.
 - **Dashboard fails to open.** Read the terminal error and use the local URL Streamlit prints. If a previous copy is still running, use its printed URL or close only your own idle process before restarting.
 - **A save shows no progress.** Check the folder and interpreter in **Diagnostics**. Save one complete function, then use the next checkpoint in [What you build](#what-you-build). If the dashboard pauses because a function returned no resource ID, fix its return value and check for a resource from the first attempt before choosing **Retry after checking existing resources**. For syntax or indentation errors, run the checker again.

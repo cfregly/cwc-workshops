@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .venv/
 /.venv-backup-*/
+/.workshop-uv/
 .DS_Store
 data/app.log
 .claude/
