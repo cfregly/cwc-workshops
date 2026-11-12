@@ -21,7 +21,7 @@ and deploys, correlate the timestamps, and inspect the candidate diff.
 
 ## Setup
 
-For the live lab, you need **Python 3** and an Anthropic API key from Claude Console or your instructor. The setup below uses uv to create the workshop environment with **Python 3.10.20**, the tested version pinned for this lab. Clone from a fresh parent folder to avoid reusing an older checkout. If Git is unavailable, extract the source ZIP into a fresh folder and open `ship-your-first-managed-agent`. [API keys](https://platform.claude.com/settings/keys) · [Workshop source ZIP](https://github.com/cfregly/cwc-workshops/archive/refs/tags/gagan-sre-workshop-2026-11-12-r2.zip)
+For the live lab, you need **Python 3** and an Anthropic API key from Claude Console or your instructor. The setup below uses uv to create the workshop environment with **Python 3.10.20**, the tested version pinned for this lab. Clone from a fresh parent folder to avoid reusing an older checkout. [API keys](https://platform.claude.com/settings/keys)
 
 ```bash
 git clone --branch gagan-sre-workshop --single-branch https://github.com/cfregly/cwc-workshops.git cwc-workshops/
@@ -35,7 +35,7 @@ git branch --show-current
 git rev-parse HEAD
 ```
 
-Expect the branch `gagan-sre-workshop`. Keep the full commit SHA printed by `git rev-parse HEAD` so you can identify your exact checkout. If your instructor gives you a commit SHA, check that it matches. The branch ZIP is a snapshot of the branch when you download it.
+Expect the branch `gagan-sre-workshop`. Keep the full commit SHA printed by `git rev-parse HEAD` so you can identify your exact checkout. If your instructor gives you a commit SHA, check that it matches.
 
 ### Create the virtual environment
 
@@ -216,7 +216,7 @@ With your workshop key set, run the checker with neither flag for local diagnost
 
 Add `--check-access` to that command to test read access with your issued key without launching the dashboard. The checker sends a single list request to the first-party Claude API. This can catch a 401 or 403 before you create resources. A pass confirms read access, while model access and resource creation have their own checks. Use the dashboard or Console for live session state and tool results.
 
-- **Missing files or no Git.** Open the workshop subfolder in a fresh clone or the [workshop ZIP](https://github.com/cfregly/cwc-workshops/archive/refs/tags/gagan-sre-workshop-2026-11-12-r2.zip). Keep your existing edits and run the checker from the folder containing `app.py`.
+- **Missing files.** Open the workshop subfolder in a fresh clone. Keep your existing edits and run the checker from the folder containing `app.py`.
 - **Missing venv, wrong Python, or import failure.** Return to [Create the virtual environment](#create-the-virtual-environment) and use Python 3.10.20. If your existing uv is missing or cannot obtain that Python version, follow the `.workshop-uv` fallback for your platform. If the fallback or pip fails, share the first error.
 - **Missing or incomplete log.** The launch command generates a missing log. If the dashboard is already open or the checker reports an incomplete log, run `.venv/bin/python data/generate_log.py` or, in PowerShell, `& .\.venv\Scripts\python.exe data/generate_log.py` from the workshop folder. Wait for 69,740 lines, then look for the file ID after upload.
 - **Dashboard fails to open.** Read the terminal error and use the local URL Streamlit prints. If a previous copy is still running, use its printed URL or close only your own idle process before restarting.
