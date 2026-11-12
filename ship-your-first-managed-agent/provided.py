@@ -77,10 +77,24 @@ def _tool_key(event: _ToolRequest | _ToolResult) -> _ToolKey:
     return event.type, event.id
 
 
-def _console_session_url(session_id: str, workspace: str | None) -> str:
+def _console_url(collection: str, resource_id: str, workspace: str | None) -> str:
     workspace_path = quote(workspace or "default", safe="")
-    session_path = quote(session_id, safe="")
-    return f"https://platform.claude.com/workspaces/{workspace_path}/sessions/{session_path}"
+    resource_path = quote(resource_id, safe="")
+    return f"https://platform.claude.com/workspaces/{workspace_path}/{collection}/{resource_path}"
+
+
+def _console_button(url: str, resource: str, *, primary: bool = False):
+    st.link_button(
+        "Console", url, help=f"Open {resource} in Claude Console",
+        type="primary" if primary else "secondary",
+        icon=":material/open_in_new:", icon_position="right",
+    )
+
+
+def _resource_id(label: str, resource_id: str, resource: str, url: str):
+    with st.container(horizontal=True, width="content", vertical_alignment="center", gap="xsmall"):
+        st.caption(f"{label} · `{resource_id}`")
+        _console_button(url, resource)
 
 
 def _event_id(label: str, event_id: str, *, console_url: str | None = None):
@@ -89,14 +103,7 @@ def _event_id(label: str, event_id: str, *, console_url: str | None = None):
         with st.container(horizontal=True, wrap=False, gap="xsmall"):
             st.code(event_id, language=None, wrap_lines=True)
             if console_url:
-                st.html(
-                    f'<a class="tool-console-link" href="{escape(console_url, quote=True)}" '
-                    'target="_blank" rel="noopener noreferrer" '
-                    'aria-label="Open call in Claude Console" title="Open call in Claude Console">'
-                    '<span aria-hidden="true">↗</span>'
-                    '</a>',
-                    width="content",
-                )
+                _console_button(console_url, "this call")
 
 
 def _payload(value: object, *, text: bool = False):
@@ -168,10 +175,11 @@ def _offline(fn: str):
 
 
 @st.cache_data
-def _agent_skills(agent_id: str) -> list[str]:
+def _agent_details(agent_id: str) -> tuple[list[str], str | None]:
     import agent
-    a = agent.client.beta.agents.retrieve(agent_id)
-    return [s.skill_id for s in (a.skills or [])]
+    response = agent.client.beta.agents.with_raw_response.retrieve(agent_id)
+    skills = [skill.skill_id for skill in (response.parse().skills or [])]
+    return skills, response.headers.get("anthropic-workspace-id")
 
 
 @st.cache_data(ttl=20)
@@ -303,14 +311,17 @@ def _chat_panel():
     agent_id = _setup_resource("setup_agent", agent.setup_agent)
     if agent_id is None:
         return
-    st.caption(f"agent · `{agent_id}`")
-    for sk in _agent_skills(agent_id):
+    skills, agent_workspace = _agent_details(agent_id)
+    _resource_id("agent", agent_id, "this agent",
+                 _console_url("agents", agent_id, agent_workspace))
+    for sk in skills:
         st.caption(f"skill · `{sk}`")
 
     env_id = _setup_resource("setup_environment", agent.setup_environment)
     if env_id is None:
         return
-    st.caption(f"env · `{env_id}`")
+    _resource_id("env", env_id, "this environment",
+                 _console_url("environments", env_id, agent_workspace))
 
     log_id = _setup_resource("upload_log", agent.upload_log)
     if log_id is None:
@@ -326,12 +337,12 @@ def _chat_panel():
     sid = st.session_state.get("sid")
     status = None
     paused = None
-    workspace = None
+    workspace = agent_workspace
     if sid:
         try:
             response = agent.client.beta.sessions.with_raw_response.retrieve(sid)
             status = response.parse().status
-            workspace = response.headers.get("anthropic-workspace-id")
+            workspace = response.headers.get("anthropic-workspace-id") or agent_workspace
             if "chat_history" not in st.session_state:
                 st.session_state.chat_history = _load_history(sid)
             if status == "idle":
@@ -360,7 +371,7 @@ def _chat_panel():
     else:
         st.session_state.pop("session_picker", None)
 
-    session_url = _console_session_url(sid, workspace) if sid else None
+    session_url = _console_url("sessions", sid, workspace) if sid else None
     with st.container(horizontal=True, vertical_alignment="center"):
         st.selectbox(
             "session", ids, index=None if sid is None else 0, format_func=lambda v: labels.get(v, v),
@@ -368,10 +379,7 @@ def _chat_panel():
             width=300,
         )
         if session_url:
-            st.link_button(
-                "Open in Claude Console", session_url, type="primary",
-                icon=":material/open_in_new:", icon_position="right",
-            )
+            _console_button(session_url, "the selected session", primary=True)
         new_session = st.button("", icon=":material/add:", help="new session")
         delete_session = st.button(
             "", icon=":material/delete:", help="delete session",

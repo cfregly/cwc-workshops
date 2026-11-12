@@ -93,22 +93,6 @@ html, body, [class*="st-"], .stApp {
 [class*="st-key-tool-event-id-"] [data-testid="stElementToolbarButton"] button::after { content: "Copy ID"; }
 [class*="st-key-tool-card-"] [data-testid="stElementToolbarButton"] button[aria-label="Copied"]::after { content: "Copied"; }
 
-.tool-console-link {
-  display: inline-flex;
-  width: 2.25rem;
-  height: 2.25rem;
-  align-items: center;
-  justify-content: center;
-  color: var(--text) !important;
-  font-size: 1.125rem;
-  line-height: 1;
-  text-decoration: none !important;
-  border: 1px solid var(--border);
-  border-radius: 0.45rem;
-}
-.tool-console-link:hover { background: var(--surface-2); }
-.tool-console-link:focus-visible { outline: 2px solid var(--accent); }
-
 @media (max-width: 540px) {
   [class*="st-key-tool-card-"] [class*="st-key-tool-event-id-"] [data-testid="stCode"] {
     grid-template-columns: minmax(0, 1fr);

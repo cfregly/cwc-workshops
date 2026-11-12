@@ -196,7 +196,7 @@ one uncertainty before sharing your answer.
 
 Each tool card shows its full call event ID. Use **Copy ID** for event IDs and **Copy Contents** for tool inputs and outputs. Expand **Input and result** to see formatted JSON or text and the result's own ID. The same cards appear when you reopen a session from the picker.
 
-Click **Open in Claude Console** next to the session picker to open the session. Click the **↗** beside a call's **Copy ID** to jump to that call. In **Inspector → Events**, match a local call's ID to the result's `custom_tool_use_id`. Sign in with your own Console account and use a session workspace where you have Developer or Admin access. You can also trace the exchange in Streamlit from the same card. [Console Sessions](https://platform.claude.com/sessions) · [Inspect a session](https://platform.claude.com/docs/en/managed-agents/session-observability#inspect-a-session-in-the-console)
+Use **Console** next to the picker to open the selected session. The agent and environment have their own **Console** buttons beside their IDs. On a tool card, **Console** beside **Copy ID** opens that exact call. In **Inspector → Events**, match a local call's ID to the result's `custom_tool_use_id`. Sign in with your own Console account and use a session workspace where you have Developer or Admin access. You can also trace the exchange in Streamlit from the same card. [Console Sessions](https://platform.claude.com/sessions) · [Inspect a session](https://platform.claude.com/docs/en/managed-agents/session-observability#inspect-a-session-in-the-console)
 
 ## What this teaches
 
@@ -255,7 +255,7 @@ Add `--check-access` to that command to test read access with your issued key wi
    If a dashboard is running, finish its active turn and record the resource IDs before restarting it with that interpreter. Keep the workshop's `display_title` argument.
 
 2. **The dashboard shows a session ID and no answer.** Clicking **+** creates a session and begins sandbox provisioning. Finish and save both `stream_reply()` and `handle_tool()`, then send your message once from the dashboard. The `user.message` event starts a model turn. If you already sent it, inspect that same session's status and events before sending again. Keep Streamlit running while its local handler is needed.
-3. **A tool result is missing after reopening.** Let an active turn finish so the local worker can return pending results. Reopen the session and match the card's call ID to the result reference. If the result is still missing, use **Open in Claude Console** to inspect the same session. If the link does not open it, select the key's workspace in [Console Sessions](https://platform.claude.com/sessions) and find the full session ID shown below the dashboard picker. If you lack Console access, ask the instructor for a labeled practice trace.
+3. **A tool result is missing after reopening.** Let an active turn finish so the local worker can return pending results. Reopen the session and match the card's call ID to the result reference. If the result is still missing, use **Console** beside the picker to inspect the same session. If the link does not open it, select the key's workspace in [Console Sessions](https://platform.claude.com/sessions) and find the full session ID shown below the dashboard picker. If you lack Console access, ask the instructor for a labeled practice trace.
 
 ### API access, a quiet stream, or cleanup
 
