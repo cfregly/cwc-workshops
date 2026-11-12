@@ -143,7 +143,7 @@ Open `.env` privately and set `ANTHROPIC_API_KEY` to the intended key. If your s
 
 ### Check setup and start the dashboard
 
-Run the included checker with the venv Python. It requires the exact Python version in `.python-version` before checking installed packages, dependency consistency, local files, starter syntax, and your key. The command below also checks Managed Agents read access and opens the dashboard if the checks pass. Keep the key off screen. The app generates the synthetic log on first launch if it is missing.
+Run the checker with the venv Python. It checks the pinned Python and packages, verifies that the SDK accepts `display_title`, and flags edited setup functions that omit a resource ID return. The command below also generates and validates a missing synthetic log, checks Managed Agents read access, and opens the dashboard. Keep the key off screen.
 
 **macOS or Linux**
 
@@ -212,7 +212,7 @@ Keep your own folder and Streamlit process. Tell your instructor the **last step
 
 ### Start with the local setup
 
-Run the checker with neither flag for local diagnostics. It reports issues without showing the key or file contents. The checker names your first unfinished function and tells you what to look for after that step. A compiled function still needs a check in the dashboard.
+Run the checker with neither flag for local diagnostics. It reports issues without showing the key or file contents. Follow its first fix or unfinished function cue, then verify the result in the dashboard.
 
 **macOS or Linux**
 
@@ -230,7 +230,7 @@ Add `--check-access` to that command to test read access with your issued key wi
 
 - **Missing files or no Git.** Open the workshop subfolder in a fresh clone or the [workshop ZIP](https://github.com/cfregly/cwc-workshops/archive/refs/heads/gagan-sre-workshop.zip). Keep your existing edits. `provided.py` reads the fixtures relative to the current directory.
 - **Missing venv, wrong Python, or import failure.** Return to [Create the virtual environment](#create-the-virtual-environment) and use Python 3.10.20. If an older uv reports that the interpreter is unavailable, use the versioned installer above. On macOS, use `"$HOME/.local/bin/uv"` in the creation command if your shell still finds the older uv. On Windows, reopen PowerShell after installing. If pip reports a wheel, index or network error, share that first error.
-- **Missing or incomplete log.** Run `.venv/bin/python data/generate_log.py` or, in PowerShell, `& .\.venv\Scripts\python.exe data/generate_log.py`. This regenerates the synthetic `data/app.log` and reports its line count. Wait for generation before upload.
+- **Missing or incomplete log.** The launch command generates a missing log. If the dashboard is already open or the checker reports an incomplete log, run `.venv/bin/python data/generate_log.py` or, in PowerShell, `& .\.venv\Scripts\python.exe data/generate_log.py` from the workshop folder. Wait for 69,740 lines, then look for the file ID after upload.
 - **Dashboard fails to open.** Read the terminal error and use the local URL Streamlit prints. If a previous copy is still running, use its printed URL or close only your own idle process before restarting.
 - **A save shows no progress.** Check that you edited `agent.py` in the folder the dashboard runs from. Save one complete function, then use the next checkpoint in [What you build](#what-you-build). Follow the first relevant traceback line. Run the checker again to locate a syntax or indentation error. Compare just the current function with the reference if you need help.
 

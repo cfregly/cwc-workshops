@@ -14,6 +14,7 @@ import subprocess
 import sys
 import warnings
 from importlib import metadata
+from inspect import signature
 from pathlib import Path
 
 
@@ -39,6 +40,12 @@ CHECKPOINTS = {
     "stream_reply": "Open the event stream before sending the message. Finish handle_tool before submitting.",
     "handle_tool": "Compare the request to the schema in provided.py. For checkout p99, expect service=checkout and metric=p99_latency_ms.",
     "delete_session": "After your turn finishes, check the full session ID before clicking delete once.",
+}
+RESOURCE_RETURN_EXAMPLES = {
+    "setup_agent": "return agent.id",
+    "setup_environment": "return env.id",
+    "upload_log": "return uploaded_file.id",
+    "start_session": "return session.id",
 }
 
 
@@ -84,6 +91,17 @@ def check_packages(root, check):
             importlib.import_module(module)
         except Exception as exc:
             check(False, f"Cannot import {module} ({type(exc).__name__}). Reinstall the pins in a fresh .venv.")
+            continue
+        if name == "anthropic":
+            try:
+                from anthropic.resources.beta.skills import Skills
+
+                # Bind the workshop call without constructing a client or sending a request.
+                signature(Skills.create).bind(None, display_title="Workshop setup check", files=[])
+            except (ImportError, AttributeError, TypeError, ValueError):
+                check(False, "Could not verify Anthropic SDK support for display_title. Reinstall the pins in a fresh .venv.")
+            else:
+                check(True, "The Anthropic SDK accepts display_title for Skill uploads.")
 
 
 def check_key(root, check):
@@ -219,6 +237,19 @@ def is_stub(node):
     return False
 
 
+def has_value_return(function):
+    remaining = list(function.body)
+    while remaining:
+        node = remaining.pop()
+        if isinstance(node, ast.Return):
+            value = node.value
+            if value is not None and not (isinstance(value, ast.Constant) and value.value is None):
+                return True
+        elif not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            remaining.extend(ast.iter_child_nodes(node))
+    return False
+
+
 def check_workshop_files(root, check):
     missing = [name for name in WORKSHOP_FILES if not (root / name).is_file()]
     if not check(not missing, "Missing workshop files: " + ", ".join(missing) if missing else "Workshop files found."):
@@ -260,14 +291,28 @@ def check_workshop_files(root, check):
         if missing:
             check(False, "Missing synchronous function definitions: " + ", ".join(missing))
         stubs = [name for name, node in functions.items() if is_stub(node)]
-        next_step = next((name for name in CHECKPOINTS if name in stubs or name in missing), None)
-        if next_step:
-            print(f"NEXT  {next_step}(): {CHECKPOINTS[next_step]}")
-        elif not missing:
+        missing_returns = [name for name in RESOURCE_RETURN_EXAMPLES
+                           if name in functions and name not in stubs and not has_value_return(functions[name])]
+        for name in missing_returns:
+            check(False, f"{name}() needs to return its resource ID, for example {RESOURCE_RETURN_EXAMPLES[name]}.")
+        unfinished = set(missing) | set(stubs) | set(missing_returns)
+        next_step = next((name for name in CHECKPOINTS if name in unfinished), None)
+        if next_step is None:
             print("NOTE  All seven functions are present. Verify what they do in the dashboard.")
+        elif next_step not in missing_returns:
+            print(f"NEXT  {next_step}(): {CHECKPOINTS[next_step]}")
 
+
+def check_log(root, check, *, generate_missing):
     log = root / "data" / "app.log"
     try:
+        if generate_missing and not log.exists() and not log.is_symlink():
+            print("Generating the synthetic data/app.log fixture.", flush=True)
+            try:
+                subprocess.run([sys.executable, str(log.with_name("generate_log.py"))], check=True)
+            except (OSError, subprocess.CalledProcessError):
+                check(False, "Could not generate data/app.log. Check that data/ is writable and has space.")
+                return
         lines = 0
         with log.open(encoding="utf-8") as stream:
             for lines, line in enumerate(stream, 1):
@@ -276,7 +321,10 @@ def check_workshop_files(root, check):
                     raise ValueError
         check(lines == 69740, f"data/app.log has {lines} lines. The workshop fixture has 69740.")
     except FileNotFoundError:
-        print("NOTE  data/app.log is missing. The README and first dashboard launch can generate it.")
+        if generate_missing:
+            check(False, "data/app.log is still missing. Use the log generator command in the README.")
+        else:
+            print("NOTE  data/app.log is missing. The README launch command generates it.")
     except OSError:
         check(False, "Cannot read data/app.log.")
     except (UnicodeError, ValueError, RecursionError):
@@ -316,6 +364,7 @@ def main():
     check_packages(root, check)
     check_workshop_files(root, check)
     key = check_key(root, check) if not failed else None
+    check_log(root, check, generate_missing=args.launch and not failed)
 
     if failed:
         print("Use Troubleshooting in the README, then rerun this command.")
